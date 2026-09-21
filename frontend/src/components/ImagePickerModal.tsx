@@ -546,7 +546,7 @@ export default function ImagePickerModal({ kind, currentPath, onSelect, onClear,
               <WritableColumnBrowser
                 tree={imagesTree}
                 kind={kind}
-                onSelect={onSelect ? (node, path) => { onSelect(path); onClose() } : undefined}
+                onSelect={onSelect ? (node, path) => { onSelect(`media/images/${path}`); onClose() } : undefined}
               />
             )
           )}
@@ -560,7 +560,7 @@ export default function ImagePickerModal({ kind, currentPath, onSelect, onClear,
               <ColumnBrowser
                 tree={libraryTree}
                 kind={kind}
-                onSelect={onSelect ? (node, path) => { onSelect(path); onClose() } : undefined}
+                onSelect={onSelect ? (node, path) => { onSelect(`media/library/${path}`); onClose() } : undefined}
               />
             )
           )}
