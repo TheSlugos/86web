@@ -30,7 +30,7 @@ _refresh_lock = asyncio.Lock()
 
 
 async def refresh_hardware_json(
-    config_dir: Path, cache_dir: Path, force: bool = False
+    config_dir: Path, cache_dir: Optional[Path] = None, force: bool = False
 ) -> Optional[Path]:
     """
     Download 86Box source from GitHub and regenerate hardware database.
@@ -41,6 +41,9 @@ async def refresh_hardware_json(
     Returns the path to the generated JSON on success, None on failure.
     Never raises — all errors are logged.
     """
+    if cache_dir is None:
+        cache_dir = config_dir.parent / "cache"
+
     async with _refresh_lock:
         config_dir.mkdir(parents=True, exist_ok=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
