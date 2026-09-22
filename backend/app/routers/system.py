@@ -133,13 +133,24 @@ async def get_hardware_lists(
 
     # ── CPU families map: machine_id → [compatible HardwareOption] ────────────
     cpu_families_map: dict[str, list] = {}
+    all_cpu_families = hardware_lists.get_cpu_families()
     for m in hardware_lists.get_machines():
         mid = m["internal_name"]
         pkg_set = set(m.get("cpu_packages", []))
+        # 86Box implicit CPU package compatibility (src/cpu/cpu.c:408-412)
+        if "CPU_PKG_SOCKET3" in pkg_set:
+            pkg_set.add("CPU_PKG_SOCKET1")
+        elif "CPU_PKG_SLOT1" in pkg_set:
+            pkg_set.add("CPU_PKG_SOCKET370")
+            pkg_set.add("CPU_PKG_SOCKET8")
+
         families = [
-            HardwareOption(id=f["internal_name"], name=f["name"])
-            for f in hardware_lists.get_cpu_families()
-            if f.get("package") in pkg_set
+            HardwareOption(
+                id=f["internal_name"],
+                name=f['name'] if f['name'].startswith(f.get('manufacturer', '')) else f"{f.get('manufacturer', '')} {f['name']}".strip()
+            )
+            for f in all_cpu_families
+            if {p.strip() for p in f.get("package", "").split("|")} & pkg_set
         ]
         if families:
             cpu_families_map[mid] = families
@@ -221,14 +232,18 @@ async def get_machine_cpu_map(current_user: User = Depends(get_current_user)):
     # Build package → first family_id map
     pkg_to_family: dict[str, str] = {}
     for fam in hardware_lists.get_cpu_families():
-        pkg = fam.get("package", "")
-        if pkg and pkg not in pkg_to_family:
-            pkg_to_family[pkg] = fam["internal_name"]
+        for pkg in (p.strip() for p in fam.get("package", "").split("|")):
+            if pkg and pkg not in pkg_to_family:
+                pkg_to_family[pkg] = fam["internal_name"]
 
     result = {}
     for machine in hardware_lists.get_machines():
         mid = machine.get("internal_name", "")
-        pkgs = machine.get("cpu_packages", [])
+        pkgs = list(machine.get("cpu_packages", []))
+        if "CPU_PKG_SOCKET3" in pkgs and "CPU_PKG_SOCKET1" not in pkgs:
+            pkgs.append("CPU_PKG_SOCKET1")
+        elif "CPU_PKG_SLOT1" in pkgs:
+            pkgs.extend(["CPU_PKG_SOCKET370", "CPU_PKG_SOCKET8"])
         for pkg in pkgs:
             if pkg in pkg_to_family:
                 result[mid] = pkg_to_family[pkg]
