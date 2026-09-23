@@ -979,4 +979,4 @@ async def inject_file_to_hdd(
         inject_file(hdd_path, file)
         return {"status": "success", "message": f"Successfully injected {file.filename} into hdd{index}.img"}
     except MToolsError as e:
-        raise HTTPException(500, str(e))
+        raise HTTPException(400, str(e))

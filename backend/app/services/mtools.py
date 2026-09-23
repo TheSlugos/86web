@@ -56,7 +56,13 @@ def inject_file(img_path: str, upload_file: UploadFile) -> None:
         
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
-            raise MToolsError(f"File injection failed: {res.stderr}\n{res.stdout}")
+            err_msg = (res.stderr or res.stdout or "").strip()
+            if "non DOS media" in err_msg or "Cannot initialize" in err_msg:
+                raise MToolsError(
+                    "The hard disk is not formatted with a DOS/FAT filesystem. "
+                    "Please partition (FDISK) and format (FORMAT C:) the disk inside the VM before injecting files."
+                )
+            raise MToolsError(f"File injection failed: {err_msg}")
             
     finally:
         os.unlink(tmp_path)
