@@ -41,6 +41,12 @@ class RunnerClient:
             r.raise_for_status()
             return r.json()
 
+    async def run_xdotool_script(self, vm_id: int, script: str) -> dict:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            r = await client.post(f"{self.base_url}/vms/{vm_id}/xdotool-script", json={"script": script})
+            r.raise_for_status()
+            return r.json()
+
     async def send_key(self, vm_id: int, key: str) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             r = await client.post(f"{self.base_url}/vms/{vm_id}/send-key", json={"key": key})

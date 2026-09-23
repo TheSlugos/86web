@@ -605,8 +605,33 @@ class VMProcessManager:
                 log.warning("xdotool send_key failed (rc=%d): %s", result.returncode, result.stderr.strip())
                 return {"error": result.stderr.strip() or f"xdotool rc={result.returncode}"}
             return {"status": "ok"}
-        except FileNotFoundError:
-            return {"error": "xdotool not installed"}
+        except subprocess.TimeoutExpired:
+            return {"error": "xdotool timed out"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def run_xdotool_script(self, vm_id: int, script: str) -> dict:
+        """Run an arbitrary xdotool script via stdin."""
+        procs = self._vms.get(vm_id)
+        if not procs or procs.status == "stopped":
+            return {"error": "VM not running"}
+        try:
+            env = os.environ.copy()
+            env["DISPLAY"] = procs.display
+            result = subprocess.run(
+                ["xdotool", "-"],
+                input=script,
+                timeout=10, env=env,
+                capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                log.warning("xdotool script failed (rc=%d): %s", result.returncode, result.stderr.strip())
+                return {"error": result.stderr.strip() or f"xdotool rc={result.returncode}"}
+            return {"status": "ok"}
+        except subprocess.TimeoutExpired:
+            return {"error": "xdotool timed out"}
+        except Exception as e:
+            return {"error": str(e)}
 
     def get_pulse_info(self, vm_id: int) -> dict | None:
         procs = self._vms.get(vm_id)

@@ -153,6 +153,16 @@ async def send_key(vm_id: int, body: dict):
         raise HTTPException(400, result["error"])
     return result
 
+@app.post("/vms/{vm_id}/xdotool-script")
+async def run_xdotool_script(vm_id: int, body: dict):
+    script = body.get("script", "")
+    if not script:
+        raise HTTPException(400, "script is required")
+    result = manager.run_xdotool_script(vm_id, script)
+    if result.get("error"):
+        raise HTTPException(400, result["error"])
+    return result
+
 
 @app.get("/vms/{vm_id}/status")
 async def get_vm_status(vm_id: int):
