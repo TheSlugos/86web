@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, ChevronRight, HardDrive, Monitor, Volume2, Network, Cpu, Settings2, UsbIcon, Upload, Trash2, Disc, Save, FolderOpen, Plus, CloudOff, ServerCog } from 'lucide-react'
 import { VMConfig, HardwareLists, HardwareOption } from '../types'
-import { systemApi, mediaApi, defaultConfig, formatBytes } from '../lib/api'
+import { systemApi, mediaApi, vmApi, defaultConfig, formatBytes } from '../lib/api'
 import { useStore } from '../store/useStore'
 import { withBusGroups } from '../lib/busGroups'
 import { clsx } from 'clsx'
@@ -1217,11 +1217,11 @@ export default function VMConfigModal({ vmId, initialConfig, initialName = '', i
                               ))}
                             </select>
                           </div>
-                          {vmId > 0 && (
+                          {Boolean(vmId && vmId > 0) && (
                             <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
                               <label className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-2 block">Inject File (MTools)</label>
                               <input type="file" className="text-xs w-full" disabled={readOnly} onChange={async (e) => {
-                                if (!e.target.files?.length) return;
+                                if (!e.target.files?.length || !vmId) return;
                                 const file = e.target.files[0];
                                 try {
                                   addToast(`Injecting ${file.name} into Hard Disk ${i}...`, 'info');
