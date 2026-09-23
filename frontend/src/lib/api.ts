@@ -93,6 +93,21 @@ export const vmApi = {
       `/vms/${id}/media/blank-floppy`,
       { method: 'POST', body: JSON.stringify({ name, size_kb: sizeKb }) },
     ),
+  injectFile: async (id: number, index: number, file: File) => {
+    const token = getToken()
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`/api/vms/${id}/hdd/${index}/inject`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Upload failed' }))
+      throw new Error(err.detail || 'Upload failed')
+    }
+    return res.json() as Promise<{ status: string; message: string }>
+  },
 
   // Groups
   listGroups: () => request<VMGroup[]>('/vms/groups'),

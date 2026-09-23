@@ -304,7 +304,7 @@ export default function VMConfigModal({ vmId, initialConfig, initialName = '', i
   const uploadAbortRef = useRef<AbortController | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [imagePicker, setImagePicker] = useState<{ key: string; kind: 'floppy' | 'cdrom' } | null>(null)
-  const { serverOnline, setActiveUpload, updateUploadProgress } = useStore()
+  const { serverOnline, setActiveUpload, updateUploadProgress, addToast } = useStore()
 
   const { data: hw } = useQuery({ queryKey: ['hardware'], queryFn: systemApi.hardware })
   const { data: voodooTypes } = useQuery({ queryKey: ['voodoo-types'], queryFn: systemApi.voodooTypes })
@@ -1217,6 +1217,24 @@ export default function VMConfigModal({ vmId, initialConfig, initialName = '', i
                               ))}
                             </select>
                           </div>
+                          {vmId > 0 && (
+                            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+                              <label className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-2 block">Inject File (MTools)</label>
+                              <input type="file" className="text-xs w-full" disabled={readOnly} onChange={async (e) => {
+                                if (!e.target.files?.length) return;
+                                const file = e.target.files[0];
+                                try {
+                                  addToast(`Injecting ${file.name} into Hard Disk ${i}...`, 'info');
+                                  await vmApi.injectFile(vmId, i, file);
+                                  addToast(`Successfully injected ${file.name}!`, 'success');
+                                } catch (err: any) {
+                                  addToast(err.message || 'Failed to inject file', 'error');
+                                }
+                                e.target.value = '';
+                              }} />
+                              <p className="text-[10px] text-slate-500 mt-1">Upload a file directly into this FAT hard drive. VM must be powered off.</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )
