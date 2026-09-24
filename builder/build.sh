@@ -16,7 +16,9 @@ echo "[86Box Builder] Running CMake configure..."
 cmake /src -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DUSE_QT6=ON \
-    -DDEV_BUILD=OFF
+    -DUSE_QT6_BELOW10=ON \
+    -DSDL2=ON \
+    -DDEV_BRANCH=OFF
 
 echo "[86Box Builder] Running Ninja build..."
 ninja

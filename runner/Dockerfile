@@ -58,6 +58,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libqt6gui6 \
     libqt6core6 \
     libqt6network6 \
+    libqt6opengl6 \
+    libqt6openglwidgets6 \
+    qt6-qpa-plugins \
     libslirp0 \
     libsdl2-2.0-0 \
     libsndfile1 \

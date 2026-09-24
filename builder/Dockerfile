@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     qt6-base-dev \
     qt6-tools-dev \
     qt6-tools-dev-tools \
+    qt6-l10n-tools \
     qt6-base-private-dev \
     libfreetype-dev \
     libpng-dev \
@@ -23,6 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfluidsynth-dev \
     libvdeplug-dev \
     libserialport-dev \
+    libqt6opengl6-dev \
+    libvulkan-dev \
+    git \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
