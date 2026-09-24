@@ -652,3 +652,23 @@ class VMProcessManager:
             }
             for p in self._vms.values()
         ]
+    def run_ipc_command(self, vm_id: int, cmd: str) -> dict:
+        """Send an IPC command to the 86Box UNIX socket."""
+        procs = self._vms.get(vm_id)
+        if not procs or procs.status == "stopped":
+            return {"error": "VM not running"}
+            
+        sock_path = "/tmp/86box-ipc.sock"
+        if not os.path.exists(sock_path):
+            return {"error": "IPC socket not found. Ensure you are using the patched 86Box version."}
+            
+        import socket
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(2.0)
+            sock.connect(sock_path)
+            sock.sendall((cmd + "\n").encode("utf-8"))
+            sock.close()
+            return {"status": "ok"}
+        except Exception as e:
+            return {"error": f"Failed to communicate with IPC socket: {e}"}

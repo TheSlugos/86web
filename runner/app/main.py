@@ -163,6 +163,16 @@ async def run_xdotool_script(vm_id: int, body: dict):
         raise HTTPException(400, result["error"])
     return result
 
+@app.post("/vms/{vm_id}/ipc-command")
+async def run_ipc_command(vm_id: int, body: dict):
+    cmd = body.get("cmd", "")
+    if not cmd:
+        raise HTTPException(400, "cmd is required")
+    result = manager.run_ipc_command(vm_id, cmd)
+    if result.get("error"):
+        raise HTTPException(400, result["error"])
+    return result
+
 
 @app.get("/vms/{vm_id}/status")
 async def get_vm_status(vm_id: int):

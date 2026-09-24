@@ -815,24 +815,8 @@ async def delete_media(
 
 # ─── Drive Management (mount / eject / blank floppy) ─────────────────────────
 
+
 _VALID_DRIVE_KEYS = {"fdd_01", "fdd_02", "cdrom_01", "cdrom_02"}
-
-
-def _get_media_menu_index(config: dict, target_key: str) -> int:
-    index = 0
-    for i in range(1, 5):
-        key = f"fdd_{i:02d}"
-        # FDDs default to 525_2dd for 1/2 and none for 3/4, but check exact configured state
-        default_type = "525_2dd" if i <= 2 else "none"
-        is_enabled = config.get(f"{key}_type", default_type) != "none"
-        if key == target_key: return index
-        if is_enabled: index += 1
-    for i in range(1, 5):
-        key = f"cdrom_{i:02d}"
-        is_enabled = config.get(f"{key}_enabled", False)
-        if key == target_key: return index
-        if is_enabled: index += 1
-    return 0
 
 @router.post("/{vm_id}/drives/{drive_key}/mount")
 async def mount_drive(
@@ -867,23 +851,10 @@ async def mount_drive(
 
     if vm.status == "running":
         service = VMService()
-        idx = _get_media_menu_index(config, drive_key)
-        downs = "\n".join(["key Down" for _ in range(idx)])
-        script = f"""
-key alt+m
-sleep 0.2
-{downs}
-key Return
-sleep 0.2
-key Return
-sleep 0.5
-key ctrl+l
-sleep 0.2
-type "{abs_path}"
-sleep 0.2
-key Return
-"""
-        await service.run_xdotool_script(vm_id, script.strip())
+        idx = int(drive_key[-2:]) - 1
+        prefix = "fdd" if drive_key.startswith("fdd") else "cdrom"
+        cmd = f"{prefix}_mount {idx} {abs_path}"
+        await service.run_ipc_command(vm_id, cmd)
 
     return {"status": "mounted", "drive_key": drive_key, "path": abs_path}
 
@@ -911,21 +882,10 @@ async def eject_drive(
 
     if vm.status == "running":
         service = VMService()
-        idx = _get_media_menu_index(config, drive_key)
-        downs = "\n".join(["key Down" for _ in range(idx)])
-        # For Floppy, 'Empty drive' is the 4th item (index 3). For CD-ROM, it's the 2nd item (index 1).
-        submenu_downs_count = 3 if drive_key.startswith("fdd") else 1
-        submenu_downs = "\n".join(["key Down" for _ in range(submenu_downs_count)])
-        script = f"""
-key alt+m
-sleep 0.2
-{downs}
-key Return
-sleep 0.2
-{submenu_downs}
-key Return
-"""
-        await service.run_xdotool_script(vm_id, script.strip())
+        idx = int(drive_key[-2:]) - 1
+        prefix = "fdd" if drive_key.startswith("fdd") else "cdrom"
+        cmd = f"{prefix}_eject {idx}"
+        await service.run_ipc_command(vm_id, cmd)
 
     return {"status": "ejected", "drive_key": drive_key}
 
