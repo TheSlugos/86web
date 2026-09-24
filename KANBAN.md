@@ -3,8 +3,9 @@
 ## 📋 Backlog (Ideas & Planned Features)
 
 ### Storage & Media
-- [ ] **MTools Injector: Target Folder Selection**
-  - Allow specifying or choosing a target subfolder (e.g. `::/TEMP`, `::/GAMES`) on the FAT partition instead of always injecting into root (`::/`).
+- [ ] **MTools Injector: Target Folder Selection & ZIP Archive Extraction**
+  - Allow specifying a target subfolder (e.g. `::/TEMP`, `::/GAMES`) on the FAT partition instead of always injecting into root (`::/`).
+  - Add automatic extraction for `.zip` archive uploads, allowing entire game/tool directory structures to be unzipped directly onto the FAT hard drive.
   - Prevents root directory clutter and avoids FAT12/FAT16 512-entry root limit.
 - [ ] **Download Hard Disk Images**
   - Add UI button to download existing `hdd{N}.img` files from the VM configuration modal.
@@ -30,6 +31,16 @@
   - Add IPC commands for soft reset (`reset`), hard reset (`hard_reset`), pause/resume (`pause`, `resume`), and ACPI shutdown (`acpi_power_button`) instead of relying solely on process signals.
 - [ ] **Drive Status Query via IPC**
   - Add bidirectional response capability (e.g. `drive_query`) so 86Web can query 86Box directly for the active image path and status of each drive.
+
+### Security & Production Hardening (Pre-Deployment)
+- [ ] **Enforce Random `APP_SECRET_KEY` Generation**
+  - Prevent startup or warn loudly if `APP_SECRET_KEY` remains the default placeholder (`changeme_secret`) to prevent JWT token forgery.
+- [ ] **VNC WebSocket & Audio Stream Authentication**
+  - Require token validation on `/vnc/{vm_id}/websockify` and `/vms/{vm_id}/audio` so unauthenticated users cannot view screens or listen to audio without logging in.
+- [ ] **Login Rate Limiting**
+  - Add brute-force protection / throttling to `POST /api/auth/token`.
+- [ ] **Production Deployment Documentation**
+  - Document best practices for public deployment (e.g. Cloudflare Zero Trust / Access, VNC passwords, SSL termination).
 
 ---
 
