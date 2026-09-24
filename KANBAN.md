@@ -19,24 +19,13 @@
 - [ ] **Import VM Configuration**
   - Upload an `86box.cfg` file to automatically parse and provision a new VM in 86Web.
 
-### 86Box Core & Architecture
-- [ ] **86Box Unix Domain Control Socket (Fork / Custom Build)**
-  - Fork 86Box (`TheSlugos/86Box`) and implement a lightweight Unix domain socket server (`/tmp/86box-control-{uuid}.sock`) in `src/unix/`.
-  - Expose direct RPC/text commands to call core emulator functions (`floppy_mount`, `floppy_eject`, `cdrom_mount`, `cdrom_eject`, `hard_reset`, etc.).
-  - Completely eliminates UI-level keystroke/mouse automation fragility for live hypervisor management.
+
 
 ---
 
 ## ⚙️ In Progress / In Review
-
-- [ ] **Media Hot-Swapping (`feat-hot-swap-hack`)**
-  - Refine `xdotool` automation to reliably hot-swap media without reboots:
-    1. Toggle menubar visible in fullscreen using `Ctrl+Alt+Page_Down` (`toggle_ui_fullscreen`).
-    2. Click Media menu directly (`xdotool mousemove 115 10 click 1`) to avoid DOS input interception.
-    3. Trigger `j` for live Floppy/CD eject.
-    4. Trigger `e` and automate file dialog for mounting without string/quoting errors.
-    5. Toggle menubar hidden to restore clean fullscreen view.
-  - Plan: Resume testing on live containers tomorrow night.
+ 
+(All current sprint items completed!)
 - [x] **File Injection via MTools (`feat-file-injector`)**
   - [x] Integrate `mtools` (`mcopy`, `sfdisk`) in backend container.
   - [x] Implement `POST /api/vms/{id}/hdd/{index}/inject` endpoint.
@@ -49,6 +38,12 @@
 
 ## ✅ Completed
 
+- [x] **86Box Native UNIX Socket IPC & Headless Hot-Swapping (`feat-hot-swap-hack` + `feat-unix-socket-ipc`)**
+  - Added `QLocalServer` UNIX domain control socket (`/tmp/86box-ipc.sock`) to 86Box Qt mainwindow.
+  - Implemented direct C++ commands (`cdrom_mount`, `cdrom_eject`, `fdd_mount`, `fdd_eject`) dispatched directly onto the GUI thread.
+  - Replaced fragile GUI `xdotool` keystroke simulation in 86Web with direct UNIX domain socket IPC.
+  - Added automated Docker builder container (`docker compose -f docker-compose.build-86box.yml up --build`) for reproducible one-command custom 86Box compilation without host dependencies.
+  - Verified live mounting and ejecting on running VMs without rebooting.
 - [x] **Fix Startup Floppy & CD-ROM Mounting (`main`)**
   - Fixed 86Box INI keys (`cdrom_{n}_fn`), removed numeric drive type mapping, and added proper `media/library/` path resolution.
 - [x] **Fix Hardware Database Refresh 500 Error (`main`)**
