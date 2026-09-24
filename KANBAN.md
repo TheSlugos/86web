@@ -19,7 +19,17 @@
 - [ ] **Import VM Configuration**
   - Upload an `86box.cfg` file to automatically parse and provision a new VM in 86Web.
 
-
+### 86Box Custom IPC & Architecture (Future Refinements)
+- [ ] **Per-VM Dynamic Socket Path (`--socketpath` or `${vmpath}/ipc.sock`)**
+  - Currently `/tmp/86box-ipc.sock` is hardcoded. If multiple VMs run concurrently, they collide on this socket.
+  - Add CLI argument `--socketpath <path>` or automatically default to `<vmpath>/86box-ipc.sock` so concurrent VMs each have an isolated control channel.
+- [ ] **Floppy Write-Protection Flag via IPC**
+  - Currently `fdd_mount` defaults write-protection to `false` (`floppyMount(id, path, false)`).
+  - Add support for an optional flag (e.g. `fdd_mount <id> [ro|rw] <path>`) so users can mount floppies write-protected when desired.
+- [ ] **VM Lifecycle & State Control via IPC**
+  - Add IPC commands for soft reset (`reset`), hard reset (`hard_reset`), pause/resume (`pause`, `resume`), and ACPI shutdown (`acpi_power_button`) instead of relying solely on process signals.
+- [ ] **Drive Status Query via IPC**
+  - Add bidirectional response capability (e.g. `drive_query`) so 86Web can query 86Box directly for the active image path and status of each drive.
 
 ---
 
