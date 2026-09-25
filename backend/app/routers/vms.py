@@ -853,10 +853,14 @@ async def mount_drive(
         service = VMService()
         idx = int(drive_key[-2:]) - 1
         prefix = "fdd" if drive_key.startswith("fdd") else "cdrom"
-        cmd = f"{prefix}_mount {idx} {abs_path}"
+        if prefix == "fdd":
+            ro_flag = "ro" if body.write_protected else "rw"
+            cmd = f"fdd_mount {idx} {ro_flag} {abs_path}"
+        else:
+            cmd = f"cdrom_mount {idx} {abs_path}"
         await service.run_ipc_command(vm_id, cmd)
 
-    return {"status": "mounted", "drive_key": drive_key, "path": abs_path}
+    return {"status": "mounted", "drive_key": drive_key, "path": abs_path, "write_protected": body.write_protected}
 
 
 @router.post("/{vm_id}/drives/{drive_key}/eject")

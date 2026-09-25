@@ -471,6 +471,14 @@ class VMProcessManager:
             ]
             _teardown_network(vm_id, procs.network_group_id, remaining, procs.network_tap_dev)
 
+        # Remove VM IPC socket if left behind
+        sock_path = os.path.join(procs.vm_dir, "86box-ipc.sock") if procs.vm_dir else None
+        if sock_path and os.path.exists(sock_path):
+            try:
+                os.remove(sock_path)
+            except OSError:
+                pass
+
         return {"status": "stopped"}
 
     async def reset_vm(self, vm_id: int) -> dict:
@@ -657,18 +665,36 @@ class VMProcessManager:
         procs = self._vms.get(vm_id)
         if not procs or procs.status == "stopped":
             return {"error": "VM not running"}
-            
-        sock_path = "/tmp/86box-ipc.sock"
+
+        vm_dir = getattr(procs, "vm_dir", None)
+        sock_path = os.path.join(vm_dir, "86box-ipc.sock") if vm_dir else None
+        if not sock_path or not os.path.exists(sock_path):
+            sock_path = f"/tmp/86box-ipc-{vm_id}.sock"
+        if not os.path.exists(sock_path):
+            sock_path = "/tmp/86box-ipc.sock"
         if not os.path.exists(sock_path):
             return {"error": "IPC socket not found. Ensure you are using the patched 86Box version."}
-            
+
         import socket
         try:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.settimeout(2.0)
             sock.connect(sock_path)
-            sock.sendall((cmd + "\n").encode("utf-8"))
+            sock.sendall((cmd.strip() + "\n").encode("utf-8"))
+
+            # Read response from 86Box
+            response = ""
+            while True:
+                data = sock.recv(1024)
+                if not data:
+                    break
+                response += data.decode("utf-8", errors="replace")
+                if "\n" in response:
+                    break
             sock.close()
-            return {"status": "ok"}
+            resp = response.strip()
+            if resp.startswith("ERROR"):
+                return {"status": "error", "error": resp}
+            return {"status": "ok", "response": resp}
         except Exception as e:
             return {"error": f"Failed to communicate with IPC socket: {e}"}
