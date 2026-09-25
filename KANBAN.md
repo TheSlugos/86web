@@ -20,17 +20,26 @@
 - [ ] **Import VM Configuration**
   - Upload an `86box.cfg` file to automatically parse and provision a new VM in 86Web.
 
-### 86Box Custom IPC & Architecture (Future Refinements)
-- [ ] **Per-VM Dynamic Socket Path (`--socketpath` or `${vmpath}/ipc.sock`)**
-  - Currently `/tmp/86box-ipc.sock` is hardcoded. If multiple VMs run concurrently, they collide on this socket.
-  - Add CLI argument `--socketpath <path>` or automatically default to `<vmpath>/86box-ipc.sock` so concurrent VMs each have an isolated control channel.
-- [ ] **Floppy Write-Protection Flag via IPC**
-  - Currently `fdd_mount` defaults write-protection to `false` (`floppyMount(id, path, false)`).
-  - Add support for an optional flag (e.g. `fdd_mount <id> [ro|rw] <path>`) so users can mount floppies write-protected when desired.
-- [ ] **VM Lifecycle & State Control via IPC**
-  - Add IPC commands for soft reset (`reset`), hard reset (`hard_reset`), pause/resume (`pause`, `resume`), and ACPI shutdown (`acpi_power_button`) instead of relying solely on process signals.
-- [ ] **Drive Status Query via IPC**
-  - Add bidirectional response capability (e.g. `drive_query`) so 86Web can query 86Box directly for the active image path and status of each drive.
+### Custom 86Box Automated Release Pipeline & 86Web Distribution
+- [ ] **GitHub Actions Release in `TheSlugos/86Box`**
+  - Set up / verify a GitHub Actions workflow in `TheSlugos/86Box` to build Linux x86_64 AppImage and/or binary assets automatically upon release tag.
+  - Cut an official release tag (e.g., `v4.2.1-custom-ipc` or `v4.2.1-slugos`) with the compiled custom 86Box binary.
+- [ ] **86Web Automated 86Box Downloader Integration**
+  - Update `runner/app/updater.py` to allow configuring `BOX86_REPO` (defaulting to `TheSlugos/86Box` or configurable via environment variable).
+  - Ensure standard Docker installations of 86Web automatically download our custom 86Box release binary instead of upstream without requiring local source compilation.
+
+### Frontend UI & Removable Media Controls
+- [ ] **Removable Media ("Drives") Menu in VNC Console Toolbar (`VNCViewer.tsx`)**
+  - Add an interactive "Drives" / "Removable Media" dropdown menu to the active VM viewer toolbar.
+  - List configured Floppy (A:, B:) and CD-ROM drives with current status (mounted image filename or `[Empty]`).
+  - Provide live actions: "Insert Image..." (opens image picker), "Eject", and a write-protection toggle for floppies.
+  - Wire to `vmApi.mountDrive(vmId, driveKey, path, writeProtected)` and `vmApi.ejectDrive(vmId, driveKey)`.
+- [ ] **Audit & Refine Existing Image Functionality**
+  - Audit existing image workflows (`ImagePickerModal.tsx`, `WritableImageBrowser.tsx`, `mediaApi`, `/library` vs per-VM media).
+  - Clarify and fix issues where images can or cannot be mounted, deleted, or shared across VMs.
+- [ ] **Rewire Console Toolbar Actions to Native IPC**
+  - Switch "Reset" button in `VNCViewer.tsx` to send `hard_reset` over the IPC socket instead of terminating/re-launching the runner process.
+  - Switch "Pause" button in `VNCViewer.tsx` to send `plat_pause()` over the IPC socket instead of Linux `SIGSTOP`/`SIGCONT` signals.
 
 ### Security & Production Hardening (Pre-Deployment)
 - [ ] **Enforce Random `APP_SECRET_KEY` Generation**
@@ -45,8 +54,26 @@
 ---
 
 ## ⚙️ In Progress / In Review
- 
-(All current sprint items completed!)
+
+- [ ] **Custom 86Box Release & 86Web Downloader Integration**
+  - Tagging release in `TheSlugos/86Box` and linking `runner/app/updater.py`.
+- [ ] **Frontend Removable Media UI & Existing Image Functionality Audit**
+  - Designing and implementing the live drive mount/eject UI and testing current media browser behavior.
+
+---
+
+## ✅ Completed
+
+- [x] **86Box Dynamic Per-VM UNIX Socket IPC & Headless Control (`TheSlugos/86Box:master` + `86web:feat-hot-swap-hack`)**
+  - Implemented dynamic per-VM socket isolation defaulting to `<vmpath>/86box-ipc.sock` (with CLI override `--socketpath <path>`), eliminating multi-VM collisions.
+  - Added bidirectional protocol with synchronous responses (`OK`, `ERROR`, `PONG`).
+  - Implemented floppy write-protection flag (`fdd_mount <id> [ro|rw] <path>`).
+  - Added live drive status queries (`fdd_status <id>`, `cdrom_status <id>`).
+  - Added native lifecycle commands (`reset`, `hard_reset`, `pause`, `resume`, `power_off`, `acpi_shutdown`).
+  - Implemented clean socket unlinking on exit in both 86Box (`closeEvent` / destructor) and 86Web runner (`stop_vm`).
+  - Updated 86Web backend schemas and runner IPC client to route commands to per-VM sockets.
+  - Created automated Docker compilation workflow (`docker compose -f docker-compose.build-86box.yml up --build`).
+  - Fully verified and merged into `TheSlugos/86Box:master`.
 - [x] **File Injection via MTools (`feat-file-injector`)**
   - [x] Integrate `mtools` (`mcopy`, `sfdisk`) in backend container.
   - [x] Implement `POST /api/vms/{id}/hdd/{index}/inject` endpoint.
@@ -54,17 +81,6 @@
   - [x] Fix TypeScript compilation errors (`vmApi` import and `vmId` guard).
   - [x] Add friendly HTTP 400 error handling when disk is unpartitioned or unformatted.
   - [x] Add protection preventing injection while VM is running.
-
----
-
-## ✅ Completed
-
-- [x] **86Box Native UNIX Socket IPC & Headless Hot-Swapping (`feat-hot-swap-hack` + `feat-unix-socket-ipc`)**
-  - Added `QLocalServer` UNIX domain control socket (`/tmp/86box-ipc.sock`) to 86Box Qt mainwindow.
-  - Implemented direct C++ commands (`cdrom_mount`, `cdrom_eject`, `fdd_mount`, `fdd_eject`) dispatched directly onto the GUI thread.
-  - Replaced fragile GUI `xdotool` keystroke simulation in 86Web with direct UNIX domain socket IPC.
-  - Added automated Docker builder container (`docker compose -f docker-compose.build-86box.yml up --build`) for reproducible one-command custom 86Box compilation without host dependencies.
-  - Verified live mounting and ejecting on running VMs without rebooting.
 - [x] **Fix Startup Floppy & CD-ROM Mounting (`main`)**
   - Fixed 86Box INI keys (`cdrom_{n}_fn`), removed numeric drive type mapping, and added proper `media/library/` path resolution.
 - [x] **Fix Hardware Database Refresh 500 Error (`main`)**
