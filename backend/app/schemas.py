@@ -358,6 +358,7 @@ class AppSettings(BaseModel):
 
 class DriveMount(BaseModel):
     path: str  # full server path to the image file
+    write_protected: bool = False
 
 class BlankFloppyCreate(BaseModel):
     name: str

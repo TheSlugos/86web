@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { Maximize2, RefreshCw, PowerOff, Play, Pause, AlertCircle, Monitor, Settings, FolderOpen, Volume2, VolumeX, Keyboard, CloudOff, Camera, ZoomIn, ZoomOut, Mouse, Eye, EyeOff } from 'lucide-react'
+import { Maximize2, RefreshCw, PowerOff, Play, Pause, AlertCircle, Monitor, Settings, FolderOpen, Volume2, VolumeX, Keyboard, CloudOff, Camera, ZoomIn, ZoomOut, Mouse, Eye, EyeOff, Disc, Save, ChevronDown, X } from 'lucide-react'
 import { vmApi, systemApi } from '../lib/api'
 import { useStore } from '../store/useStore'
 import { VMConfig } from '../types'
@@ -35,6 +35,15 @@ export default function VNCViewer({ vmId, vmName }: Props) {
   // 86Box starts in fullscreen with its UI (menu+status bar) hidden.
   // This tracks whether the user has toggled it back on.
   const [uiVisible, setUiVisible] = useState(false)
+  const [showDrivesMenu, setShowDrivesMenu] = useState(false)
+  const drivesMenuRef = useRef<HTMLDivElement>(null)
+  const [pickerDrive, setPickerDrive] = useState<{
+    key: string
+    type: 'floppy' | 'cdrom'
+    name: string
+    currentPath: string
+  } | null>(null)
+  const [writeProtectedMap, setWriteProtectedMap] = useState<Record<string, boolean>>({})
 
   // 86Box keybindings — locked to defaults in 86box_global.cfg at runner startup.
   const KEY_TOGGLE_UI  = 'ctrl+alt+Next'   // Ctrl+Alt+PgDown — Toggle UI in fullscreen
@@ -113,6 +122,18 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [showScreenMenu])
+
+  // Close drives menu on outside click
+  useEffect(() => {
+    if (!showDrivesMenu) return
+    function onDown(e: MouseEvent) {
+      if (drivesMenuRef.current && !drivesMenuRef.current.contains(e.target as Node)) {
+        setShowDrivesMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [showDrivesMenu])
 
   // Connect noVNC when VM process is alive (running or paused)
   useEffect(() => {
@@ -411,6 +432,74 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     setMuted(next)
   }
 
+  interface RemovableDrive {
+    key: string
+    type: 'floppy' | 'cdrom'
+    name: string
+    currentPath: string
+  }
+
+  const removableDrives = useMemo<RemovableDrive[]>(() => {
+    const cfg = (vmFull?.config || {}) as any
+    const drives: RemovableDrive[] = []
+
+    const fddNames = ['Drive A:', 'Drive B:', 'Floppy 3', 'Floppy 4']
+    for (let i = 1; i <= 4; i++) {
+      const n = `0${i}`
+      const fddType = cfg[`fdd_${n}_type`]
+      if (fddType && fddType !== 'none') {
+        drives.push({
+          key: `fdd_${n}`,
+          type: 'floppy',
+          name: fddNames[i - 1],
+          currentPath: cfg[`fdd_${n}_fn`] || '',
+        })
+      }
+    }
+
+    for (let i = 1; i <= 4; i++) {
+      const n = `0${i}`
+      const enabled = Boolean(cfg[`cdrom_${n}_enabled`])
+      if (enabled) {
+        drives.push({
+          key: `cdrom_${n}`,
+          type: 'cdrom',
+          name: `CD-ROM ${i}`,
+          currentPath: cfg[`cdrom_${n}_fn`] || '',
+        })
+      }
+    }
+
+    return drives
+  }, [vmFull?.config])
+
+  async function handleMount(driveKey: string, path: string, writeProtected: boolean = false) {
+    try {
+      setBusy(true)
+      await vmApi.mountDrive(vmId, driveKey, path, writeProtected)
+      await qc.invalidateQueries({ queryKey: ['vm-full', vmId] })
+      const fileName = path.split('/').pop() || path
+      addToast(`Mounted ${fileName}`, 'success')
+    } catch (e: any) {
+      addToast(e.message || 'Failed to mount image', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleEject(driveKey: string, driveName: string) {
+    try {
+      setBusy(true)
+      await vmApi.ejectDrive(vmId, driveKey)
+      await qc.invalidateQueries({ queryKey: ['vm-full', vmId] })
+      addToast(`Ejected ${driveName}`, 'success')
+    } catch (e: any) {
+      addToast(e.message || 'Failed to eject drive', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const autoShutdownMins = version?.vm_auto_shutdown_minutes ?? 0
   const shutdownLimitSecs = autoShutdownMins * 60
   const remainingSecs = shutdownLimitSecs > 0 ? Math.max(0, shutdownLimitSecs - elapsedSecs) : null
@@ -512,6 +601,113 @@ export default function VNCViewer({ vmId, vmName }: Props) {
               </div>
             )}
           </div>}
+
+          {/* Drives dropdown menu */}
+          <div ref={drivesMenuRef} className="relative">
+            <button
+              onClick={() => setShowDrivesMenu(v => !v)}
+              disabled={!serverOnline}
+              title="Removable drives (Floppy & CD-ROM)"
+              className={`btn-ghost text-xs flex items-center gap-1.5 ${showDrivesMenu ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'} disabled:opacity-50`}
+            >
+              <Disc className="w-3.5 h-3.5" />
+              <span>Drives</span>
+              <ChevronDown className="w-3 h-3 text-slate-400 -ml-0.5" />
+            </button>
+            {showDrivesMenu && (
+              <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg py-2 z-50 divide-y divide-slate-100 dark:divide-slate-700/60">
+                <div className="px-3 pb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                    Removable Drives
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    {removableDrives.length} configured
+                  </span>
+                </div>
+
+                <div className="py-1 max-h-72 overflow-y-auto">
+                  {removableDrives.length === 0 ? (
+                    <div className="px-3 py-3 text-center text-xs text-slate-400">
+                      No floppy or CD-ROM drives configured.
+                    </div>
+                  ) : (
+                    removableDrives.map(drive => {
+                      const fileName = drive.currentPath ? drive.currentPath.split('/').pop() : ''
+                      const isRo = !!writeProtectedMap[drive.key]
+                      return (
+                        <div key={drive.key} className="px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/30 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 font-medium text-xs text-slate-800 dark:text-slate-200">
+                              {drive.type === 'floppy' ? (
+                                <Save className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                              ) : (
+                                <Disc className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                              )}
+                              <span>{drive.name}</span>
+                            </div>
+                            {drive.type === 'floppy' && (
+                              <label className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={isRo}
+                                  onChange={e => setWriteProtectedMap(prev => ({ ...prev, [drive.key]: e.target.checked }))}
+                                  className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-0 w-3 h-3"
+                                />
+                                <span>Write-protect</span>
+                              </label>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0 font-mono text-xs truncate" title={drive.currentPath || 'Empty'}>
+                              {fileName ? (
+                                <span className="text-slate-700 dark:text-slate-300 font-medium">{fileName}</span>
+                              ) : (
+                                <span className="text-slate-400 italic">Empty</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <button
+                                onClick={() => {
+                                  setShowDrivesMenu(false)
+                                  setPickerDrive(drive)
+                                }}
+                                className="btn-secondary text-[11px] px-2 py-0.5 h-6"
+                              >
+                                {fileName ? 'Swap…' : 'Insert…'}
+                              </button>
+                              {fileName && (
+                                <button
+                                  onClick={() => handleEject(drive.key, drive.name)}
+                                  className="btn-ghost p-1 text-slate-400 hover:text-red-500 h-6 w-6 flex items-center justify-center"
+                                  title="Eject"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                <div className="pt-2 px-3">
+                  <button
+                    onClick={() => {
+                      setShowDrivesMenu(false)
+                      setShowMedia(true)
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 py-1 font-medium"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    Manage / Upload Media Files…
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Media */}
           <button
@@ -657,6 +853,23 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           confirmClass="btn-danger"
           onConfirm={handlePowerOff}
           onCancel={() => setConfirm(null)}
+        />
+      )}
+
+      {pickerDrive && (
+        <ImagePickerModal
+          kind={pickerDrive.type}
+          currentPath={pickerDrive.currentPath}
+          onSelect={async (path) => {
+            const isRo = !!writeProtectedMap[pickerDrive.key]
+            await handleMount(pickerDrive.key, path, isRo)
+            setPickerDrive(null)
+          }}
+          onClear={async () => {
+            await handleEject(pickerDrive.key, pickerDrive.name)
+            setPickerDrive(null)
+          }}
+          onClose={() => setPickerDrive(null)}
         />
       )}
 

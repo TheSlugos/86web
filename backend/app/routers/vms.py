@@ -815,8 +815,11 @@ async def delete_media(
 
 # ─── Drive Management (mount / eject / blank floppy) ─────────────────────────
 
-_VALID_DRIVE_KEYS = {"fdd_01", "fdd_02", "cdrom_01", "cdrom_02"}
 
+_VALID_DRIVE_KEYS = {
+    "fdd_01", "fdd_02", "fdd_03", "fdd_04",
+    "cdrom_01", "cdrom_02", "cdrom_03", "cdrom_04",
+}
 
 @router.post("/{vm_id}/drives/{drive_key}/mount")
 async def mount_drive(
@@ -832,28 +835,51 @@ async def mount_drive(
     if not vm:
         raise HTTPException(404, "VM not found")
 
-    # Security: path must be inside the VM's media dir or the user's shared media pool
-    mdir = os.path.abspath(_media_dir(current_user, vm))
-    shared_mdir = os.path.abspath(settings.shared_media_path(current_user.id))
-    abs_path = os.path.abspath(body.path)
-    if not (abs_path.startswith(mdir + os.sep) or abs_path.startswith(shared_mdir + os.sep)):
-        raise HTTPException(400, "Image path must be within the VM's media directory or shared media pool")
-    if not os.path.exists(abs_path):
+    vm_dir = os.path.join(settings.vms_path, vm.uuid)
+    raw_path = body.path.strip()
+
+    # If relative path (e.g. "media/library/..." or "media/images/..."),
+    # resolve it relative to the VM directory
+    if not os.path.isabs(raw_path):
+        target_path = os.path.normpath(os.path.join(vm_dir, raw_path))
+    else:
+        target_path = os.path.normpath(raw_path)
+
+    real_path = os.path.realpath(target_path)
+
+    # Security check: must reside in VM media, host library, user images, or shared pool
+    allowed_roots = [
+        os.path.realpath(os.path.join(vm_dir, "media")),
+        os.path.realpath(settings.library_path),
+        os.path.realpath(settings.user_images_path(current_user.id)),
+        os.path.realpath(settings.shared_media_path(current_user.id)),
+    ]
+
+    is_allowed = any(real_path == root or real_path.startswith(root + os.sep) for root in allowed_roots)
+    if not is_allowed:
+        raise HTTPException(400, "Image path must be within the VM's media directory, user images, or library")
+    if not os.path.exists(real_path):
         raise HTTPException(404, "Image file not found")
 
     config = dict(vm.config or {})
-    config[f"{drive_key}_fn"] = abs_path
+    config[f"{drive_key}_fn"] = target_path
     vm.config = config
     db.commit()
 
-    vm_dir = os.path.join(settings.vms_path, vm.uuid)
     _write_86box_config(vm, vm_dir)
 
     if vm.status == "running":
         service = VMService()
-        await service.reset_vm(vm_id)
+        idx = int(drive_key[-2:]) - 1
+        prefix = "fdd" if drive_key.startswith("fdd") else "cdrom"
+        if prefix == "fdd":
+            ro_flag = "ro" if body.write_protected else "rw"
+            cmd = f"fdd_mount {idx} {ro_flag} {real_path}"
+        else:
+            cmd = f"cdrom_mount {idx} {real_path}"
+        await service.run_ipc_command(vm_id, cmd)
 
-    return {"status": "mounted", "drive_key": drive_key, "path": abs_path}
+    return {"status": "mounted", "drive_key": drive_key, "path": target_path, "write_protected": body.write_protected}
 
 
 @router.post("/{vm_id}/drives/{drive_key}/eject")
@@ -879,7 +905,10 @@ async def eject_drive(
 
     if vm.status == "running":
         service = VMService()
-        await service.reset_vm(vm_id)
+        idx = int(drive_key[-2:]) - 1
+        prefix = "fdd" if drive_key.startswith("fdd") else "cdrom"
+        cmd = f"{prefix}_eject {idx}"
+        await service.run_ipc_command(vm_id, cmd)
 
     return {"status": "ejected", "drive_key": drive_key}
 

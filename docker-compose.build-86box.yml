@@ -1,0 +1,22 @@
+# =============================================================================
+# 86Box Build Service — Compiles custom 86Box with UNIX socket IPC
+# Usage:
+#   docker compose -f docker-compose.build-86box.yml up --build
+# =============================================================================
+
+services:
+  build-86box:
+    build:
+      context: ./builder
+      dockerfile: Dockerfile
+    container_name: 86box-builder
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    volumes:
+      # Mount 86Box source tree (sibling directory)
+      - ../86Box:/src:ro
+      # Cache cmake/ninja build objects for fast incremental recompiles
+      - ./data/cache/86box-build:/build
+      # Output destination for 86Web runner cache
+      - ./data/cache/86box:/output

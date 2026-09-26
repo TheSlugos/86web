@@ -18,7 +18,7 @@ log = logging.getLogger("86web.updater")
 settings = get_settings()
 
 GITHUB_API = "https://api.github.com"
-BOX86_REPO = "86Box/86Box"
+BOX86_REPO = settings.box86_repo or os.environ.get("BOX86_REPO", "TheSlugos/86Box")
 ROMS_REPO = "86Box/roms"
 
 
@@ -51,6 +51,13 @@ async def get_latest_release(repo: str) -> dict:
 async def check_86box_update() -> dict:
     """Returns dict with version, latest, update_available."""
     installed = _read_version("86box")
+    if installed == "custom" or settings.box86_version == "custom":
+        return {
+            "version": "custom",
+            "latest": "custom",
+            "update_available": False,
+            "release": None,
+        }
     try:
         release = await get_latest_release(BOX86_REPO)
         latest = release.get("tag_name", "")

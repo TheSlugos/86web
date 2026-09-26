@@ -21,5 +21,11 @@ class VMService:
     async def send_key(self, vm_id: int, key: str) -> dict:
         return await self.client.send_key(vm_id, key)
 
+    async def run_xdotool_script(self, vm_id: int, script: str) -> dict:
+        return await self.client.run_xdotool_script(vm_id, script)
+
+    async def run_ipc_command(self, vm_id: int, cmd: str) -> dict:
+        return await self.client.run_ipc_command(vm_id, cmd)
+
     async def get_vm_status(self, vm_id: int) -> dict:
         return await self.client.get_vm_status(vm_id)

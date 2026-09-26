@@ -5,6 +5,7 @@ import os
 
 class RunnerSettings(BaseSettings):
     box86_version: str = ""
+    box86_repo: str = "TheSlugos/86Box"
     box86_arch: str = "x86_64"
     base_vnc_port: int = 5900
     max_concurrent_vms: int = 50
