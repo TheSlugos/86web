@@ -81,10 +81,10 @@ export const vmApi = {
   sendKey: (id: number, key: string) => request<{ status: string }>(`/vms/${id}/send-key`, { method: 'POST', body: JSON.stringify({ key }) }),
   status: (id: number) => request<{ id: number; status: string; vnc_port?: number; ws_port?: number; uptime?: number }>(`/vms/${id}/status`),
 
-  mountDrive: (id: number, driveKey: string, path: string) =>
-    request<{ status: string; drive_key: string; path: string }>(
+  mountDrive: (id: number, driveKey: string, path: string, writeProtected: boolean = false) =>
+    request<{ status: string; drive_key: string; path: string; write_protected: boolean }>(
       `/vms/${id}/drives/${driveKey}/mount`,
-      { method: 'POST', body: JSON.stringify({ path }) },
+      { method: 'POST', body: JSON.stringify({ path, write_protected: writeProtected }) },
     ),
   ejectDrive: (id: number, driveKey: string) =>
     request<{ status: string; drive_key: string }>(`/vms/${id}/drives/${driveKey}/eject`, { method: 'POST' }),
