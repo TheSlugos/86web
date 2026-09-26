@@ -20,14 +20,6 @@
 - [ ] **Import VM Configuration**
   - Upload an `86box.cfg` file to automatically parse and provision a new VM in 86Web.
 
-### Custom 86Box Automated Release Pipeline & 86Web Distribution
-- [ ] **GitHub Actions Release in `TheSlugos/86Box`**
-  - Set up / verify a GitHub Actions workflow in `TheSlugos/86Box` to build Linux x86_64 AppImage and/or binary assets automatically upon release tag.
-  - Cut an official release tag (e.g., `v4.2.1-custom-ipc` or `v4.2.1-slugos`) with the compiled custom 86Box binary.
-- [ ] **86Web Automated 86Box Downloader Integration**
-  - Update `runner/app/updater.py` to allow configuring `BOX86_REPO` (defaulting to `TheSlugos/86Box` or configurable via environment variable).
-  - Ensure standard Docker installations of 86Web automatically download our custom 86Box release binary instead of upstream without requiring local source compilation.
-
 ### Frontend UI & Removable Media Controls
 - [ ] **Removable Media ("Drives") Menu in VNC Console Toolbar (`VNCViewer.tsx`)**
   - Add an interactive "Drives" / "Removable Media" dropdown menu to the active VM viewer toolbar.
@@ -55,8 +47,6 @@
 
 ## ⚙️ In Progress / In Review
 
-- [ ] **Custom 86Box Release & 86Web Downloader Integration**
-  - Tagging release in `TheSlugos/86Box` and linking `runner/app/updater.py`.
 - [ ] **Frontend Removable Media UI & Existing Image Functionality Audit**
   - Designing and implementing the live drive mount/eject UI and testing current media browser behavior.
 
@@ -64,6 +54,11 @@
 
 ## ✅ Completed
 
+- [x] **Custom 86Box Automated Release Pipeline & 86Web Distribution (`TheSlugos/86Box` + `TheSlugos/86web`)**
+  - Created GitHub Actions workflow `.github/workflows/release.yml` in `TheSlugos/86Box` building on Ubuntu 22.04 LTS (x86_64, Qt6, SDL2).
+  - Successfully tagged and published GitHub Release [`v7.0.0-86web.1`](https://github.com/TheSlugos/86Box/releases/tag/v7.0.0-86web.1) containing `86Box-Linux-x86_64-v7.0.0-86web.1.tar.gz`.
+  - Updated 86Web's runner configuration (`RunnerSettings.box86_repo`), `updater.py`, `docker-compose.yml`, and `.env.example` to default to `TheSlugos/86Box`.
+  - Enables clean, automated deployment for any user without requiring local 86Box source compilation.
 - [x] **86Box Dynamic Per-VM UNIX Socket IPC & Headless Control (`TheSlugos/86Box:master` + `86web:feat-hot-swap-hack`)**
   - Implemented dynamic per-VM socket isolation defaulting to `<vmpath>/86box-ipc.sock` (with CLI override `--socketpath <path>`), eliminating multi-VM collisions.
   - Added bidirectional protocol with synchronous responses (`OK`, `ERROR`, `PONG`).
