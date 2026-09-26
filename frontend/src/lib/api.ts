@@ -93,10 +93,18 @@ export const vmApi = {
       `/vms/${id}/media/blank-floppy`,
       { method: 'POST', body: JSON.stringify({ name, size_kb: sizeKb }) },
     ),
-  injectFile: async (id: number, index: number, file: File) => {
+  injectFile: async (
+    id: number,
+    index: number,
+    file: File,
+    targetFolder: string = '',
+    extractZip: boolean = true
+  ) => {
     const token = getToken()
     const form = new FormData()
     form.append('file', file)
+    form.append('target_folder', targetFolder)
+    form.append('extract_zip', String(extractZip))
     const res = await fetch(`/api/vms/${id}/hdd/${index}/inject`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -106,7 +114,7 @@ export const vmApi = {
       const err = await res.json().catch(() => ({ detail: 'Upload failed' }))
       throw new Error(err.detail || 'Upload failed')
     }
-    return res.json() as Promise<{ status: string; message: string }>
+    return res.json() as Promise<{ status: string; message: string; extracted?: boolean; target_folder?: string }>
   },
 
   // Groups

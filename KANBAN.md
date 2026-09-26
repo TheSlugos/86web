@@ -3,10 +3,6 @@
 ## 📋 Backlog (Ideas & Planned Features)
 
 ### Storage & Media
-- [ ] **MTools Injector: Target Folder Selection & ZIP Archive Extraction**
-  - Allow specifying a target subfolder (e.g. `::/TEMP`, `::/GAMES`) on the FAT partition instead of always injecting into root (`::/`).
-  - Add automatic extraction for `.zip` archive uploads, allowing entire game/tool directory structures to be unzipped directly onto the FAT hard drive.
-  - Prevents root directory clutter and avoids FAT12/FAT16 512-entry root limit.
 - [ ] **Download Hard Disk Images**
   - Add UI button to download existing `hdd{N}.img` files from the VM configuration modal.
 - [ ] **Upload Pre-built Hard Disk Images**
@@ -20,12 +16,7 @@
 - [ ] **Import VM Configuration**
   - Upload an `86box.cfg` file to automatically parse and provision a new VM in 86Web.
 
-### Frontend UI & Removable Media Controls
-- [ ] **Removable Media ("Drives") Menu in VNC Console Toolbar (`VNCViewer.tsx`)**
-  - Add an interactive "Drives" / "Removable Media" dropdown menu to the active VM viewer toolbar.
-  - List configured Floppy (A:, B:) and CD-ROM drives with current status (mounted image filename or `[Empty]`).
-  - Provide live actions: "Insert Image..." (opens image picker), "Eject", and a write-protection toggle for floppies.
-  - Wire to `vmApi.mountDrive(vmId, driveKey, path, writeProtected)` and `vmApi.ejectDrive(vmId, driveKey)`.
+### Removable Media & IPC Controls
 - [ ] **Audit & Refine Existing Image Functionality**
   - Audit existing image workflows (`ImagePickerModal.tsx`, `WritableImageBrowser.tsx`, `mediaApi`, `/library` vs per-VM media).
   - Clarify and fix issues where images can or cannot be mounted, deleted, or shared across VMs.
@@ -47,12 +38,21 @@
 
 ## ⚙️ In Progress / In Review
 
-- [ ] **Frontend Removable Media UI & Existing Image Functionality Audit**
-  - Designing and implementing the live drive mount/eject UI and testing current media browser behavior.
+*(No active tasks currently in progress)*
 
 ---
 
 ## ✅ Completed
+
+- [x] **MTools Injector: Target Folder Selection & ZIP Archive Extraction (`feat-file-injector`)**
+  - Added recursive FAT directory creation (`ensure_fat_dir` via `mmd`) supporting any target directory path (e.g. `GAMES/DOOM`).
+  - Added automated `.zip` archive extraction and recursive tree copy (`mcopy -s -p -o`), preserving directory structures for game and tool installs.
+  - Added path traversal / Zip Slip security checks and batch copy handling to avoid argument length limits.
+  - Enhanced Hard Disks UI in `VMConfigModal.tsx` with dedicated target folder inputs and ZIP extraction toggle.
+- [x] **Removable Media ("Drives") Menu in VNC Console Toolbar (`VNCViewer.tsx`) (`main`)**
+  - Added interactive "Drives ▾" dropdown menu to console toolbar displaying all configured floppies and CD-ROMs.
+  - Supports live disk insertion (`ImagePickerModal`), disk swapping, disk ejection, and floppy write-protection toggling.
+  - Automatically updates VM database configuration and dispatches live commands over per-VM UNIX socket IPC.
 
 - [x] **Custom 86Box Automated Release Pipeline & 86Web Distribution (`TheSlugos/86Box` + `TheSlugos/86web`)**
   - Created GitHub Actions workflow `.github/workflows/release.yml` in `TheSlugos/86Box` building on Ubuntu 22.04 LTS (x86_64, Qt6, SDL2).

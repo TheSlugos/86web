@@ -305,6 +305,25 @@ export default function VMConfigModal({ vmId, initialConfig, initialName = '', i
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [imagePicker, setImagePicker] = useState<{ key: string; kind: 'floppy' | 'cdrom' } | null>(null)
   const { serverOnline, setActiveUpload, updateUploadProgress, addToast } = useStore()
+  const [injectingHdd, setInjectingHdd] = useState<number | null>(null)
+  const [injectorFolder, setInjectorFolder] = useState<Record<number, string>>({})
+  const [injectorExtractZip, setInjectorExtractZip] = useState<Record<number, boolean>>({})
+
+  async function handleInjectFile(hddIndex: number, file?: File) {
+    if (!file || !vmId) return
+    const targetFolder = injectorFolder[hddIndex] || ''
+    const extractZip = injectorExtractZip[hddIndex] ?? true
+    try {
+      setInjectingHdd(hddIndex)
+      addToast(`Injecting ${file.name} into Hard Disk ${hddIndex}…`, 'info')
+      const res = await vmApi.injectFile(vmId, hddIndex, file, targetFolder, extractZip)
+      addToast(res.message || `Successfully injected ${file.name}!`, 'success')
+    } catch (err: any) {
+      addToast(err.message || 'Failed to inject file', 'error')
+    } finally {
+      setInjectingHdd(null)
+    }
+  }
 
   const { data: hw } = useQuery({ queryKey: ['hardware'], queryFn: systemApi.hardware })
   const { data: voodooTypes } = useQuery({ queryKey: ['voodoo-types'], queryFn: systemApi.voodooTypes })
@@ -1218,21 +1237,73 @@ export default function VMConfigModal({ vmId, initialConfig, initialName = '', i
                             </select>
                           </div>
                           {Boolean(vmId && vmId > 0) && (
-                            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
-                              <label className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-2 block">Inject File (MTools)</label>
-                              <input type="file" className="text-xs w-full" disabled={readOnly} onChange={async (e) => {
-                                if (!e.target.files?.length || !vmId) return;
-                                const file = e.target.files[0];
-                                try {
-                                  addToast(`Injecting ${file.name} into Hard Disk ${i}...`, 'info');
-                                  await vmApi.injectFile(vmId, i, file);
-                                  addToast(`Successfully injected ${file.name}!`, 'success');
-                                } catch (err: any) {
-                                  addToast(err.message || 'Failed to inject file', 'error');
-                                }
-                                e.target.value = '';
-                              }} />
-                              <p className="text-[10px] text-slate-500 mt-1">Upload a file directly into this FAT hard drive. VM must be powered off.</p>
+                            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <HardDrive className="w-3.5 h-3.5 text-blue-500" />
+                                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                    File & ZIP Injector (FAT)
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-slate-400">VM must be stopped</span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400 block mb-1">
+                                    Target Folder on Disk
+                                  </label>
+                                  <input
+                                    type="text"
+                                    disabled={readOnly || injectingHdd === i}
+                                    value={injectorFolder[i] ?? ''}
+                                    onChange={e => setInjectorFolder(prev => ({ ...prev, [i]: e.target.value }))}
+                                    placeholder="e.g. GAMES\DOOM (default: root \)"
+                                    className="input text-xs w-full font-mono py-1 px-2"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400 block mb-1">
+                                    Archive Handling
+                                  </label>
+                                  <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 mt-2 cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      disabled={readOnly || injectingHdd === i}
+                                      checked={injectorExtractZip[i] ?? true}
+                                      onChange={e => setInjectorExtractZip(prev => ({ ...prev, [i]: e.target.checked }))}
+                                      className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-0 w-3.5 h-3.5"
+                                    />
+                                    <span>Extract .ZIP archives into folder</span>
+                                  </label>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 pt-1">
+                                <input
+                                  type="file"
+                                  id={`hdd-inject-input-${i}`}
+                                  className="hidden"
+                                  disabled={readOnly || injectingHdd === i}
+                                  onChange={e => {
+                                    handleInjectFile(i, e.target.files?.[0])
+                                    e.target.value = ''
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  disabled={readOnly || injectingHdd === i}
+                                  onClick={() => document.getElementById(`hdd-inject-input-${i}`)?.click()}
+                                  className="btn-secondary text-xs flex items-center gap-1.5"
+                                >
+                                  <Upload className="w-3.5 h-3.5" />
+                                  <span>{injectingHdd === i ? 'Injecting…' : 'Select File or ZIP to Inject…'}</span>
+                                </button>
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                                  Injects files directly into the FAT filesystem. Preserves internal ZIP directory structures.
+                                </p>
+                              </div>
                             </div>
                           )}
                         </div>
