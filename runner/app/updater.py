@@ -18,7 +18,7 @@ log = logging.getLogger("86web.updater")
 settings = get_settings()
 
 GITHUB_API = "https://api.github.com"
-BOX86_REPO = "86Box/86Box"
+BOX86_REPO = settings.box86_repo or os.environ.get("BOX86_REPO", "TheSlugos/86Box")
 ROMS_REPO = "86Box/roms"
 
 

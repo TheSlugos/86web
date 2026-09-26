@@ -112,6 +112,7 @@ services:
     restart: unless-stopped
     environment:
       - BOX86_VERSION=${BOX86_VERSION:-}
+      - BOX86_REPO=${BOX86_REPO:-TheSlugos/86Box}
       - BOX86_ARCH=${BOX86_ARCH:-x86_64}
       - BASE_VNC_PORT=${BASE_VNC_PORT:-5900}
       - BASE_WS_PORT=${BASE_WS_PORT:-6900}
