@@ -3,11 +3,11 @@
 ## 📋 Backlog (Ideas & Planned Features)
 
 ### Storage & Media
-- [ ] **Download Hard Disk Images**
+- [ ] **Download Hard Disk Images** *(Deprioritized - file injector fulfilled file transfer need)*
   - Add UI button to download existing `hdd{N}.img` files from the VM configuration modal.
 - [ ] **Upload Pre-built Hard Disk Images**
   - Add UI option to upload an existing `.img` file to create or replace a virtual hard drive.
-- [ ] **Host Folder to CD-ROM Share**
+- [ ] **Host Folder to CD-ROM Share** *(Deprioritized - file injector fulfilled file transfer need)*
   - Configure a secondary CD-ROM mapped to a host folder or dynamic ISO generator so files uploaded via the web UI can be read as a CD drive inside DOS/Windows without rebooting.
 
 ### VM Management & Import/Export
@@ -20,9 +20,6 @@
 - [ ] **Audit & Refine Existing Image Functionality**
   - Audit existing image workflows (`ImagePickerModal.tsx`, `WritableImageBrowser.tsx`, `mediaApi`, `/library` vs per-VM media).
   - Clarify and fix issues where images can or cannot be mounted, deleted, or shared across VMs.
-- [ ] **Rewire Console Toolbar Actions to Native IPC**
-  - Switch "Reset" button in `VNCViewer.tsx` to send `hard_reset` over the IPC socket instead of terminating/re-launching the runner process.
-  - Switch "Pause" button in `VNCViewer.tsx` to send `plat_pause()` over the IPC socket instead of Linux `SIGSTOP`/`SIGCONT` signals.
 
 ### Security & Production Hardening (Pre-Deployment)
 - [ ] **Enforce Random `APP_SECRET_KEY` Generation**
@@ -43,6 +40,13 @@
 ---
 
 ## ✅ Completed
+
+- [x] **Rewire Console Toolbar Actions to Native IPC (`feat-ipc-lifecycle`)**
+  - **Instant Hardware Reset**: Rewired "Reset" to dispatch `hard_reset` over native UNIX IPC (`pc_reset_hard()`), resetting guest CPU/BIOS instantly without killing the runner process, restarting PulseAudio, or dropping/reconnecting the VNC viewer session.
+  - **Native Pause & Resume**: Rewired "Pause" to dispatch `pause` (`plat_pause(1)`) and `resume` (`plat_pause(0)`) over native IPC, immediately syncing VM database status (`"paused"` / `"running"`) without reliance on `SIGSTOP`/`SIGCONT`.
+  - **Native Ctrl+Alt+Del**: Fast-pathed CAD (`ctrl+F12` / `cad`) to dispatch `cad` over native IPC (`pc_send_cad()`) directly into 86Box's keyboard buffer.
+  - **Clean Virtual Disk Cache Flush on Stop**: Updated `stop_vm` to send `power_off` over native IPC first, waiting for 86Box to cleanly flush virtual disk caches to disk before process cleanup.
+  - **Resilient Fallbacks**: Preserved existing process restart, OS signal (`SIGSTOP`/`SIGCONT`), and `xdotool` pathways as fallbacks if the IPC socket is unavailable.
 
 - [x] **MTools Injector: Target Folder Selection & ZIP Archive Extraction (`feat-file-injector`)**
   - Added recursive FAT directory creation (`ensure_fat_dir` via `mmd`) supporting any target directory path (e.g. `GAMES/DOOM`).
