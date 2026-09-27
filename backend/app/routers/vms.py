@@ -357,11 +357,19 @@ async def reset_vm(
     vm = db.query(VM).filter(VM.id == vm_id, VM.user_id == current_user.id).first()
     if not vm:
         raise HTTPException(404, "VM not found")
-    if vm.status != "running":
+    if vm.status not in ("running", "paused"):
         raise HTTPException(400, "VM is not running")
 
     service = VMService()
-    await service.reset_vm(vm_id)
+    result = await service.reset_vm(vm_id)
+    if result.get("error"):
+        raise HTTPException(400, result["error"])
+
+    if vm.status == "paused":
+        vm.status = "running"
+        db.commit()
+        db.refresh(vm)
+
     return {"status": "reset sent"}
 
 
@@ -371,7 +379,7 @@ async def pause_vm(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Toggle pause — SIGSTOP/SIGCONT the 86Box process."""
+    """Toggle pause — native IPC or SIGSTOP/SIGCONT fallback."""
     vm = db.query(VM).filter(VM.id == vm_id, VM.user_id == current_user.id).first()
     if not vm:
         raise HTTPException(404, "VM not found")
@@ -382,6 +390,14 @@ async def pause_vm(
     result = await service.pause_vm(vm_id)
     if result.get("error"):
         raise HTTPException(400, result["error"])
+
+    new_status = result.get("status")
+    if new_status in ("paused", "resumed"):
+        vm.status = "paused" if new_status == "paused" else "running"
+        db.commit()
+        db.refresh(vm)
+        return {"status": new_status}
+
     return {"status": "pause sent"}
 
 

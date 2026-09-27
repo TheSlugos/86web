@@ -455,11 +455,29 @@ class VMProcessManager:
             return {"error": str(e)}
 
     async def stop_vm(self, vm_id: int) -> dict:
-        procs = self._vms.pop(vm_id, None)
+        procs = self._vms.get(vm_id)
         if not procs:
             return {"status": "not_running"}
 
         log.info("Stopping VM %d", vm_id)
+
+        # Attempt clean IPC power_off first to allow 86Box to flush disk caches
+        if procs.box86_proc and procs.box86_proc.poll() is None:
+            if procs.paused:
+                try:
+                    os.killpg(procs.box86_proc.pid, signal.SIGCONT)
+                except Exception:
+                    pass
+            ipc_res = self.run_ipc_command(vm_id, "power_off", procs=procs)
+            if ipc_res.get("status") == "ok":
+                log.info("VM %d clean power_off sent via IPC", vm_id)
+                # Give 86Box up to 1.5 seconds to flush disk caches and exit cleanly
+                for _ in range(15):
+                    if procs.box86_proc.poll() is not None:
+                        break
+                    await asyncio.sleep(0.1)
+
+        self._vms.pop(vm_id, None)
         await self._kill_procs(procs)
         self._free_slot(procs.slot)
 
@@ -482,15 +500,19 @@ class VMProcessManager:
         return {"status": "stopped"}
 
     async def reset_vm(self, vm_id: int) -> dict:
-        """Restart only the 86Box process, keeping Xvfb/x11vnc/PulseAudio alive.
-
-        The VNC session stays connected through the reset.
-        """
+        """Reset the VM using native 86Box IPC hard_reset, or restart process as fallback."""
         procs = self._vms.get(vm_id)
         if not procs or not procs.box86_proc:
             return {"error": "VM not running"}
 
-        log.info("Resetting VM %d (restarting 86Box)", vm_id)
+        # Try native 86Box IPC hard_reset first
+        ipc_res = self.run_ipc_command(vm_id, "hard_reset")
+        if ipc_res.get("status") == "ok":
+            log.info("VM %d reset via native IPC hard_reset", vm_id)
+            procs.paused = False
+            return {"status": "reset"}
+
+        log.info("Resetting VM %d (restarting 86Box process fallback)", vm_id)
 
         if procs.box86_proc.poll() is None:
             try:
@@ -532,27 +554,48 @@ class VMProcessManager:
             return {"error": str(e)}
 
     async def pause_vm(self, vm_id: int) -> dict:
-        """Toggle pause on 86Box using SIGSTOP/SIGCONT."""
+        """Toggle pause on 86Box using native IPC, or fallback to SIGSTOP/SIGCONT."""
         procs = self._vms.get(vm_id)
         if not procs or not procs.box86_proc or procs.box86_proc.poll() is not None:
             return {"error": "VM not running"}
 
         pid = procs.box86_proc.pid
-        try:
-            if procs.paused:
+        if procs.paused:
+            # Try native IPC resume
+            ipc_res = self.run_ipc_command(vm_id, "resume")
+            if ipc_res.get("status") == "ok":
+                procs.paused = False
+                log.info("VM %d resumed via native IPC", vm_id)
+                return {"status": "resumed"}
+
+            # Fallback to SIGCONT
+            try:
                 os.killpg(pid, signal.SIGCONT)
                 procs.paused = False
-                log.info("VM %d resumed (SIGCONT → pgrp %d)", vm_id, pid)
+                log.info("VM %d resumed (SIGCONT → pgrp %d fallback)", vm_id, pid)
                 return {"status": "resumed"}
-            else:
+            except ProcessLookupError:
+                return {"error": "VM process not found"}
+            except Exception as e:
+                return {"error": str(e)}
+        else:
+            # Try native IPC pause
+            ipc_res = self.run_ipc_command(vm_id, "pause")
+            if ipc_res.get("status") == "ok":
+                procs.paused = True
+                log.info("VM %d paused via native IPC", vm_id)
+                return {"status": "paused"}
+
+            # Fallback to SIGSTOP
+            try:
                 os.killpg(pid, signal.SIGSTOP)
                 procs.paused = True
-                log.info("VM %d paused (SIGSTOP → pgrp %d)", vm_id, pid)
+                log.info("VM %d paused (SIGSTOP → pgrp %d fallback)", vm_id, pid)
                 return {"status": "paused"}
-        except ProcessLookupError:
-            return {"error": "VM process not found"}
-        except Exception as e:
-            return {"error": str(e)}
+            except ProcessLookupError:
+                return {"error": "VM process not found"}
+            except Exception as e:
+                return {"error": str(e)}
 
     async def _kill_procs(self, procs: VMProcesses):
         # Kill in reverse startup order.
@@ -597,10 +640,18 @@ class VMProcessManager:
         }
 
     def send_key(self, vm_id: int, key: str) -> dict:
-        """Send a key combo to the VM's virtual display via xdotool."""
+        """Send a key combo to the VM's virtual display, using native IPC for CAD if possible."""
         procs = self._vms.get(vm_id)
         if not procs or procs.status == "stopped":
             return {"error": "VM not running"}
+
+        # Fast path: send native CAD command over IPC if requesting Ctrl+Alt+Del
+        if key in ("ctrl+F12", "cad", "ctrl+alt+del", "ctrl+alt+Delete"):
+            ipc_res = self.run_ipc_command(vm_id, "cad")
+            if ipc_res.get("status") == "ok":
+                log.info("VM %d Ctrl+Alt+Del sent via native IPC cad", vm_id)
+                return {"status": "ok"}
+
         try:
             env = os.environ.copy()
             env["DISPLAY"] = procs.display
@@ -660,9 +711,10 @@ class VMProcessManager:
             }
             for p in self._vms.values()
         ]
-    def run_ipc_command(self, vm_id: int, cmd: str) -> dict:
+    def run_ipc_command(self, vm_id: int, cmd: str, procs: Optional[VMProcesses] = None) -> dict:
         """Send an IPC command to the 86Box UNIX socket."""
-        procs = self._vms.get(vm_id)
+        if procs is None:
+            procs = self._vms.get(vm_id)
         if not procs or procs.status == "stopped":
             return {"error": "VM not running"}
 
