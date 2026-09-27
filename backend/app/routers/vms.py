@@ -1,7 +1,7 @@
 import logging
 import os
 import shutil
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 
 log = logging.getLogger("86web")
 from sqlalchemy.orm import Session
@@ -948,3 +948,41 @@ async def create_blank_floppy(
         f.write(b"\x00")
 
     return {"name": safe_name, "size": size_bytes, "path": dest}
+
+@router.post("/{vm_id}/hdd/{index}/inject")
+async def inject_file_to_hdd(
+    vm_id: int,
+    index: int,
+    file: UploadFile = File(...),
+    target_folder: str = Form(""),
+    extract_zip: bool = Form(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from ..services.mtools import inject_file_or_zip, MToolsError
+    
+    vm = db.query(VM).filter(VM.id == vm_id, VM.user_id == current_user.id).first()
+    if not vm:
+        raise HTTPException(404, "VM not found")
+        
+    if vm.status == "running":
+        raise HTTPException(400, "VM must be stopped before injecting files into the hard drive to prevent corruption.")
+        
+    if index < 1 or index > 8:
+        raise HTTPException(400, "Invalid hard drive index (must be 1-8)")
+        
+    vm_dir = os.path.join(settings.vms_path, vm.uuid)
+    hdd_path = os.path.join(vm_dir, "hdd", f"hdd{index}.img")
+    
+    if not os.path.exists(hdd_path):
+        raise HTTPException(404, f"Hard drive hdd{index}.img does not exist yet.")
+        
+    try:
+        return inject_file_or_zip(
+            hdd_path,
+            file,
+            target_folder=target_folder,
+            extract_zip=extract_zip,
+        )
+    except MToolsError as e:
+        raise HTTPException(400, str(e))

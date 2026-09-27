@@ -7,6 +7,8 @@ LABEL description="86Web Backend API"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gosu \
+    mtools \
+    fdisk \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
