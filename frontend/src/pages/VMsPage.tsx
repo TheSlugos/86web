@@ -8,6 +8,7 @@ import {
 import { vmApi, systemApi, formatBytes } from '../lib/api'
 import { VM, VMConfig, VMGroup } from '../types'
 import { useStore } from '../store/useStore'
+import { exportVMConfig, parseAndValidateVMConfig } from '../lib/vmConfig'
 import VMConfigModal from '../components/VMConfigModal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { clsx } from 'clsx'
@@ -58,21 +59,6 @@ function VMCard({ vm, onEdit, groupColor, cpuSpeeds, onStartError }: { vm: VM; o
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['vms'] }); closeVMTab(vm.id); addToast(`"${vm.name}" deleted`) },
     onError: (e: any) => addToast(e.message || 'Delete failed', 'error'),
   })
-
-  const handleExport = () => {
-    const data = {
-      name: vm.name,
-      description: vm.description,
-      config: vm.config
-    }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${vm.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_config.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
 
   useEffect(() => {
     if (startMut.isSuccess) startMut.reset()
@@ -133,7 +119,7 @@ function VMCard({ vm, onEdit, groupColor, cpuSpeeds, onStartError }: { vm: VM; o
             <button onClick={() => stopMut.mutate()} disabled={stopMut.isPending} className="btn-secondary p-2" title="Stop">
               <Square className="w-3.5 h-3.5" />
             </button>
-            <button onClick={handleExport} className="btn-ghost p-2" title="Export Config">
+            <button onClick={() => exportVMConfig(vm)} className="btn-ghost p-2" title="Export Config">
               <Download className="w-3.5 h-3.5" />
             </button>
             <button onClick={onEdit} className="btn-ghost p-2" title="View settings (read-only while running)">
@@ -146,7 +132,7 @@ function VMCard({ vm, onEdit, groupColor, cpuSpeeds, onStartError }: { vm: VM; o
               <Play className="w-3.5 h-3.5" />
               {startMut.isPending || startMut.isSuccess ? 'Starting…' : 'Start'}
             </button>
-            <button onClick={handleExport} className="btn-ghost p-2" title="Export Config">
+            <button onClick={() => exportVMConfig(vm)} className="btn-ghost p-2" title="Export Config">
               <Download className="w-3.5 h-3.5" />
             </button>
             <button onClick={onEdit} disabled={!serverOnline} className="btn-ghost p-2 disabled:opacity-40 disabled:cursor-not-allowed" title={serverOnline ? 'Edit' : 'Server unavailable'}>
@@ -225,7 +211,7 @@ function VMRow({ vm, onEdit, groupColor, onStartError }: { vm: VM; onEdit: () =>
       <td className="px-5 py-3 w-24 text-xs text-slate-500 font-mono">
         {(vm.config?.mem_size || 0) >= 1024 ? `${(vm.config.mem_size) / 1024} MB` : `${vm.config?.mem_size} KB`}
       </td>
-      <td className="px-5 py-3 w-48">
+      <td className="px-5 py-3 w-52">
         <div className="flex items-center gap-1.5">
           {isRunning ? (
             <>
@@ -234,6 +220,9 @@ function VMRow({ vm, onEdit, groupColor, onStartError }: { vm: VM; onEdit: () =>
               </button>
               <button onClick={() => stopMut.mutate()} disabled={stopMut.isPending} className="btn-secondary text-xs py-1 px-2 disabled:opacity-60">
                 {stopMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+              </button>
+              <button onClick={() => exportVMConfig(vm)} className="btn-ghost p-1.5" title="Export Config">
+                <Download className="w-3.5 h-3.5" />
               </button>
               <button onClick={onEdit} className="btn-ghost p-1.5" title="View settings (read-only while running)">
                 <Eye className="w-3.5 h-3.5" />
@@ -244,6 +233,9 @@ function VMRow({ vm, onEdit, groupColor, onStartError }: { vm: VM; onEdit: () =>
               <button onClick={() => startMut.mutate()} disabled={startMut.isPending || startMut.isSuccess || !serverOnline} className="btn-success text-xs py-1 px-2.5 disabled:opacity-60">
                 {startMut.isPending || startMut.isSuccess ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
                 {startMut.isPending || startMut.isSuccess ? 'Starting…' : 'Start'}
+              </button>
+              <button onClick={() => exportVMConfig(vm)} className="btn-ghost p-1.5" title="Export Config">
+                <Download className="w-3.5 h-3.5" />
               </button>
               <button onClick={onEdit} disabled={!serverOnline} className="btn-ghost p-1.5 disabled:opacity-40 disabled:cursor-not-allowed" title={serverOnline ? 'Edit' : 'Server unavailable'}><Pencil className="w-3.5 h-3.5" /></button>
               <button onClick={() => setDeleteConfirm(true)} disabled={!serverOnline} className="btn-ghost p-1.5 text-red-400 disabled:opacity-40 disabled:cursor-not-allowed" title={serverOnline ? undefined : 'Server unavailable'}>
@@ -447,19 +439,14 @@ export default function VMsPage() {
     reader.onload = async (ev) => {
       try {
         const text = ev.target?.result as string
-        const parsed = JSON.parse(text)
-        if (!parsed.name || !parsed.config) throw new Error("Invalid config file format")
-        
-        let newName = parsed.name
-        const existingNames = vms.map(v => v.name)
-        if (existingNames.includes(newName)) {
-          newName = `${newName} (Imported)`
-        }
-        
+        const { name, description, config } = parseAndValidateVMConfig(
+          text,
+          vms.map(v => v.name)
+        )
         await createVMMut.mutateAsync({
-          name: newName,
-          description: parsed.description,
-          config: parsed.config
+          name,
+          description,
+          config,
         })
       } catch (err: any) {
         addToast(err.message || 'Failed to import config', 'error')

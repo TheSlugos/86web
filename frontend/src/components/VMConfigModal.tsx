@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { X, ChevronRight, HardDrive, Monitor, Volume2, Network, Cpu, Settings2, UsbIcon, Upload, Trash2, Disc, Save, FolderOpen, Plus, CloudOff, ServerCog } from 'lucide-react'
+import { X, ChevronRight, HardDrive, Monitor, Volume2, Network, Cpu, Settings2, UsbIcon, Upload, Trash2, Disc, Save, FolderOpen, Plus, CloudOff, ServerCog, Download } from 'lucide-react'
 import { VMConfig, HardwareLists, HardwareOption } from '../types'
 import { systemApi, mediaApi, vmApi, defaultConfig, formatBytes } from '../lib/api'
+import { exportVMConfig } from '../lib/vmConfig'
 import { useStore } from '../store/useStore'
 import { withBusGroups } from '../lib/busGroups'
 import { clsx } from 'clsx'
@@ -1678,7 +1679,16 @@ export default function VMConfigModal({ vmId, initialConfig, initialName = '', i
               ? <p className="text-xs text-amber-600 dark:text-amber-400">Settings are read-only while the VM is running</p>
               : error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
           }
-          <div className="flex items-center gap-3 ml-auto">
+          <button
+            type="button"
+            onClick={() => exportVMConfig({ name: name || 'vm', description: desc, config: cfg })}
+            className="btn-secondary flex items-center gap-1.5 text-xs py-1.5 px-3 mr-auto"
+            title="Export configuration as JSON"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export Config
+          </button>
+          <div className="flex items-center gap-3">
             {readOnly || !serverOnline ? (
               <button onClick={handleClose} className="btn-primary">Close</button>
             ) : (
