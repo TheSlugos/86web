@@ -25,11 +25,41 @@
 - [ ] **Production Deployment Documentation**
   - Document best practices for public deployment (e.g. Cloudflare Zero Trust / Access, VNC passwords, SSL termination).
 
+### UI & Input Controls
+- [ ] **Windows 3.1 & DOS Mouse Movement Investigation**
+  - Investigate cursor freezing/clipping when moving towards the top of the screen in Windows 3.1.
+  - Check browser pointer lock (`requestPointerLock`) integration in noVNC canvas.
+  - Check 86Box Qt menu bar / window border offset along the top edge inside Xvfb.
+  - Verify guest mouse driver selection (Logitech Bus Mouse vs Microsoft PS/2 / Serial).
+
+### Virtual Networking & Multiplayer Gaming Lab
+- [ ] **Explore & Verify VM Group Networking**
+  - Verify bridged TAP interfaces and PCap permissions (`cap_wrap`) across VMs assigned to the same network group.
+  - Test packet drivers (NE2000 / Novell IPX) inside DOS/Win9x guests.
+  - Setup a two-VM DOOM deathmatch over IPX network.
+
+### Testing & Quality Assurance
+- [ ] **Comprehensive Test Suite & Verification Plan**
+  - Create integration test suite and checklist covering:
+    - FAT hard disk file & recursive ZIP injector (`mtools`).
+    - Live floppy/CD-ROM mounting, ejecting, write-protection toggling over IPC.
+    - VM lifecycle controls (`hard_reset`, `pause`/`resume`, `cad`, clean `power_off`).
+    - VM config JSON export & import with sanitization and name collision handling.
+
+### Production Deployment & Migration
+- [ ] **Deploy Custom 86Web Instance to Production Server**
+  - Package and deploy custom 86Web build (`TheSlugos/86web` + `TheSlugos/86Box`) to replace the standard instance on the server.
+  - Verify persistent data migration (`/data/vms`, `/data/roms`, database).
+
 ---
 
-## ⚙️ In Progress / In Review
+## ⚙️ In Progress / Next Up
 
-*(No active tasks currently in progress)*
+1. **Windows 3.1 Mouse Quirk Debugging**
+2. **Comprehensive Test Suite & Verification Plan**
+3. **Deploy Custom 86Web to Production Server**
+4. **Security Hardening (JWT Secret, Stream Auth, Rate Limiting)**
+5. **VM Group Networking Lab (Multiplayer DOOM)**
 
 ---
 
