@@ -10,12 +10,6 @@
 - [ ] **Host Folder to CD-ROM Share** *(Deprioritized - file injector fulfilled file transfer need)*
   - Configure a secondary CD-ROM mapped to a host folder or dynamic ISO generator so files uploaded via the web UI can be read as a CD drive inside DOS/Windows without rebooting.
 
-### VM Management & Import/Export
-- [ ] **Export VM Configuration**
-  - Download/export a VM's `86box.cfg` file.
-- [ ] **Import VM Configuration**
-  - Upload an `86box.cfg` file to automatically parse and provision a new VM in 86Web.
-
 ### Removable Media & IPC Controls
 - [ ] **Audit & Refine Existing Image Functionality**
   - Audit existing image workflows (`ImagePickerModal.tsx`, `WritableImageBrowser.tsx`, `mediaApi`, `/library` vs per-VM media).
@@ -40,6 +34,13 @@
 ---
 
 ## ✅ Completed
+
+- [x] **VM Configuration Export & Import (`feat-import-export-vm-config`)**
+  - **Native JSON Architecture**: Export and import complete VM configurations using 86Web's native JSON representation, ensuring 100% schema fidelity with zero loss of hardware options or bus filter conflicts.
+  - **Media Path Sanitization**: Automatically strips private per-VM media paths (`/data/vms/.../media/`) on export and import while safely preserving shared library paths (`/library/...`).
+  - **Smart Name Deduplication**: Handles import name collisions automatically using an incrementing counter (`(Imported)`, `(Imported 2)`).
+  - **Format Validation**: Validates file structure, format tag (`86web-vm-config`), and required configuration parameters.
+  - **Accessible Everywhere**: Export available in Grid View (`VMCard`), Table View (`VMTableRow`), and inside the VM Configuration Modal (`VMConfigModal`). Import available in the main toolbar and empty state screen.
 
 - [x] **Rewire Console Toolbar Actions to Native IPC (`feat-ipc-lifecycle`)**
   - **Instant Hardware Reset**: Rewired "Reset" to dispatch `hard_reset` over native UNIX IPC (`pc_reset_hard()`), resetting guest CPU/BIOS instantly without killing the runner process, restarting PulseAudio, or dropping/reconnecting the VNC viewer session.

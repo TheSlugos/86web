@@ -3,11 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Play, Square, RotateCcw, Pencil, Trash2, Monitor, Loader2,
   FolderPlus, ChevronDown, ChevronRight, LayoutGrid, List,
-  HardDrive, Eye, Network, Settings2, CloudOff,
+  HardDrive, Eye, Network, Settings2, CloudOff, Download, Upload
 } from 'lucide-react'
 import { vmApi, systemApi, formatBytes } from '../lib/api'
 import { VM, VMConfig, VMGroup } from '../types'
 import { useStore } from '../store/useStore'
+import { exportVMConfig, parseAndValidateVMConfig } from '../lib/vmConfig'
 import VMConfigModal from '../components/VMConfigModal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { clsx } from 'clsx'
@@ -118,6 +119,9 @@ function VMCard({ vm, onEdit, groupColor, cpuSpeeds, onStartError }: { vm: VM; o
             <button onClick={() => stopMut.mutate()} disabled={stopMut.isPending} className="btn-secondary p-2" title="Stop">
               <Square className="w-3.5 h-3.5" />
             </button>
+            <button onClick={() => exportVMConfig(vm)} className="btn-ghost p-2" title="Export Config">
+              <Download className="w-3.5 h-3.5" />
+            </button>
             <button onClick={onEdit} className="btn-ghost p-2" title="View settings (read-only while running)">
               <Eye className="w-3.5 h-3.5" />
             </button>
@@ -127,6 +131,9 @@ function VMCard({ vm, onEdit, groupColor, cpuSpeeds, onStartError }: { vm: VM; o
             <button onClick={() => startMut.mutate()} disabled={startMut.isPending || startMut.isSuccess || !serverOnline} className="btn-success flex-1 justify-center text-xs py-1.5 disabled:opacity-60">
               <Play className="w-3.5 h-3.5" />
               {startMut.isPending || startMut.isSuccess ? 'Starting…' : 'Start'}
+            </button>
+            <button onClick={() => exportVMConfig(vm)} className="btn-ghost p-2" title="Export Config">
+              <Download className="w-3.5 h-3.5" />
             </button>
             <button onClick={onEdit} disabled={!serverOnline} className="btn-ghost p-2 disabled:opacity-40 disabled:cursor-not-allowed" title={serverOnline ? 'Edit' : 'Server unavailable'}>
               <Pencil className="w-3.5 h-3.5" />
@@ -204,7 +211,7 @@ function VMRow({ vm, onEdit, groupColor, onStartError }: { vm: VM; onEdit: () =>
       <td className="px-5 py-3 w-24 text-xs text-slate-500 font-mono">
         {(vm.config?.mem_size || 0) >= 1024 ? `${(vm.config.mem_size) / 1024} MB` : `${vm.config?.mem_size} KB`}
       </td>
-      <td className="px-5 py-3 w-48">
+      <td className="px-5 py-3 w-52">
         <div className="flex items-center gap-1.5">
           {isRunning ? (
             <>
@@ -213,6 +220,9 @@ function VMRow({ vm, onEdit, groupColor, onStartError }: { vm: VM; onEdit: () =>
               </button>
               <button onClick={() => stopMut.mutate()} disabled={stopMut.isPending} className="btn-secondary text-xs py-1 px-2 disabled:opacity-60">
                 {stopMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+              </button>
+              <button onClick={() => exportVMConfig(vm)} className="btn-ghost p-1.5" title="Export Config">
+                <Download className="w-3.5 h-3.5" />
               </button>
               <button onClick={onEdit} className="btn-ghost p-1.5" title="View settings (read-only while running)">
                 <Eye className="w-3.5 h-3.5" />
@@ -223,6 +233,9 @@ function VMRow({ vm, onEdit, groupColor, onStartError }: { vm: VM; onEdit: () =>
               <button onClick={() => startMut.mutate()} disabled={startMut.isPending || startMut.isSuccess || !serverOnline} className="btn-success text-xs py-1 px-2.5 disabled:opacity-60">
                 {startMut.isPending || startMut.isSuccess ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
                 {startMut.isPending || startMut.isSuccess ? 'Starting…' : 'Start'}
+              </button>
+              <button onClick={() => exportVMConfig(vm)} className="btn-ghost p-1.5" title="Export Config">
+                <Download className="w-3.5 h-3.5" />
               </button>
               <button onClick={onEdit} disabled={!serverOnline} className="btn-ghost p-1.5 disabled:opacity-40 disabled:cursor-not-allowed" title={serverOnline ? 'Edit' : 'Server unavailable'}><Pencil className="w-3.5 h-3.5" /></button>
               <button onClick={() => setDeleteConfirm(true)} disabled={!serverOnline} className="btn-ghost p-1.5 text-red-400 disabled:opacity-40 disabled:cursor-not-allowed" title={serverOnline ? undefined : 'Server unavailable'}>
@@ -419,6 +432,31 @@ export default function VMsPage() {
   const [startError, setStartError] = useState<string | null>(null)
   const [deleteGroupConfirm, setDeleteGroupConfirm] = useState<VMGroup | null>(null)
 
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      try {
+        const text = ev.target?.result as string
+        const { name, description, config } = parseAndValidateVMConfig(
+          text,
+          vms.map(v => v.name)
+        )
+        await createVMMut.mutateAsync({
+          name,
+          description,
+          config,
+        })
+      } catch (err: any) {
+        addToast(err.message || 'Failed to import config', 'error')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = '' // Reset input so same file can be uploaded again
+  }
+
+
   const { data: vms = [], isLoading } = useQuery({
     queryKey: ['vms'],
     queryFn: () => vmApi.list(),
@@ -555,6 +593,13 @@ export default function VMsPage() {
           <button onClick={() => setShowCreateGroup(true)} disabled={!serverOnline} className="btn-secondary disabled:opacity-60" title={!serverOnline ? 'Server unavailable' : undefined}>
             <FolderPlus className="w-4 h-4" />New Group
           </button>
+          <label
+            className={clsx('btn-secondary cursor-pointer', (atVMQuota || !serverOnline) && 'opacity-60')}
+            title={!serverOnline ? 'Server unavailable' : atVMQuota ? `Quota reached` : 'Import Config'}
+          >
+            <Upload className="w-4 h-4" /> Import
+            <input type="file" accept=".json" className="hidden" disabled={atVMQuota || !serverOnline} onChange={handleImport} />
+          </label>
           <button
             disabled={!serverOnline}
             onClick={() => atVMQuota ? addToast(`VM quota reached (${userStats!.max_vms} VMs). Delete a VM to create a new one.`, 'error') : setShowCreateVM(true)}
@@ -594,13 +639,22 @@ export default function VMsPage() {
             <>
               <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-1">No Virtual Machines</h3>
               <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">Create your first VM to get started</p>
-              <button
-                disabled={!serverOnline}
-                onClick={() => atVMQuota ? addToast(`VM quota reached (${userStats!.max_vms} VMs). Delete a VM to create a new one.`, 'error') : setShowCreateVM(true)}
-                className="btn-primary mx-auto disabled:opacity-60"
-              >
-                <Plus className="w-4 h-4" /> Create VM
-              </button>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  disabled={!serverOnline}
+                  onClick={() => atVMQuota ? addToast(`VM quota reached (${userStats!.max_vms} VMs). Delete a VM to create a new one.`, 'error') : setShowCreateVM(true)}
+                  className="btn-primary disabled:opacity-60"
+                >
+                  <Plus className="w-4 h-4" /> Create VM
+                </button>
+                <label
+                  className={clsx('btn-secondary cursor-pointer', (atVMQuota || !serverOnline) && 'opacity-60')}
+                  title={!serverOnline ? 'Server unavailable' : atVMQuota ? `Quota reached` : 'Import Config'}
+                >
+                  <Upload className="w-4 h-4" /> Import
+                  <input type="file" accept=".json" className="hidden" disabled={atVMQuota || !serverOnline} onChange={handleImport} />
+                </label>
+              </div>
             </>
           ) : (
             <>
