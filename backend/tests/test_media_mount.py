@@ -200,3 +200,65 @@ async def test_eject_running_drive_dispatches_ipc():
         assert res == {"status": "ejected", "drive_key": "fdd_02"}
         assert mock_vm.config["fdd_02_fn"] == ""
         mock_ipc.assert_called_once_with(1, "fdd_eject 1")
+
+
+def test_write_86box_config_resolves_bare_floppy_to_media(tmp_path):
+    from app.routers.vms import _write_86box_config
+    vm_dir = tmp_path / "test-vm"
+    media_dir = vm_dir / "media"
+    media_dir.mkdir(parents=True)
+    floppy_file = media_dir / "msdos6_22disk1.img"
+    floppy_file.write_bytes(b"dummy floppy")
+
+    mock_vm = MagicMock(
+        id=1,
+        user_id=1,
+        uuid="test-uuid",
+        config={
+            "machine": "ibmxt",
+            "cpu_family": "8088",
+            "fdd_01_type": "35_2hd",
+            "fdd_01_fn": "msdos6_22disk1.img",
+        },
+    )
+
+    with patch("app.hardware_lists.get_cpu_by_index", return_value=(4772727, 1)), \
+         patch("app.hardware_lists.machine_has_builtin_video", return_value=False):
+        _write_86box_config(mock_vm, str(vm_dir))
+
+    cfg_path = vm_dir / "86box.cfg"
+    assert cfg_path.exists()
+    content = cfg_path.read_text(encoding="utf-8")
+    assert "fdd_01_fn = media/msdos6_22disk1.img" in content
+
+
+def test_write_86box_config_resolves_bare_cdrom_to_media(tmp_path):
+    from app.routers.vms import _write_86box_config
+    vm_dir = tmp_path / "test-vm-cd"
+    media_dir = vm_dir / "media"
+    media_dir.mkdir(parents=True)
+    iso_file = media_dir / "setup.iso"
+    iso_file.write_bytes(b"dummy iso")
+
+    mock_vm = MagicMock(
+        id=2,
+        user_id=1,
+        uuid="test-uuid-cd",
+        config={
+            "machine": "ibmxt",
+            "cpu_family": "8088",
+            "cdrom_01_enabled": True,
+            "cdrom_01_bus": "ide",
+            "cdrom_01_fn": "setup.iso",
+        },
+    )
+
+    with patch("app.hardware_lists.get_cpu_by_index", return_value=(4772727, 1)), \
+         patch("app.hardware_lists.machine_has_builtin_video", return_value=False):
+        _write_86box_config(mock_vm, str(vm_dir))
+
+    cfg_path = vm_dir / "86box.cfg"
+    assert cfg_path.exists()
+    content = cfg_path.read_text(encoding="utf-8")
+    assert "cdrom_01_fn = media/setup.iso" in content
+

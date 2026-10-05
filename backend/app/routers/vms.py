@@ -686,6 +686,26 @@ def _write_86box_config(vm: VM, vm_dir: str, config_override: dict | None = None
     # ── [Floppy and CD-ROM drives] ────────────────────────────────────────────
     section("Floppy and CD-ROM drives")
 
+    def _resolve_media_path(fn_str: str) -> str:
+        if not fn_str:
+            return ""
+        clean = fn_str.strip()
+        if not clean:
+            return ""
+        if os.path.isabs(clean) or os.path.exists(os.path.join(vm_dir, clean)):
+            return clean.replace("\\", "/")
+        if os.path.exists(os.path.join(vm_dir, "media", clean)):
+            return os.path.join("media", clean).replace("\\", "/")
+        user_id = getattr(vm, "user_id", None)
+        if user_id is not None:
+            user_img = os.path.join(settings.user_images_path(user_id), clean)
+            if os.path.exists(user_img):
+                return os.path.relpath(user_img, vm_dir).replace("\\", "/")
+        lib_img = os.path.join(settings.library_path, clean)
+        if os.path.exists(lib_img):
+            return os.path.relpath(lib_img, vm_dir).replace("\\", "/")
+        return clean.replace("\\", "/")
+
     # Floppy drives 01-04; 86Box defaults fdd_01/02 = 525_2dd, fdd_03/04 = none
     _fdd_defaults = {1: "525_2dd", 2: "525_2dd", 3: "none", 4: "none"}
     for i in range(1, 5):
@@ -697,7 +717,7 @@ def _write_86box_config(vm: VM, vm_dir: str, config_override: dict | None = None
             opt(f"fdd_{n}_turbo", 1)
         if not cfg.get(f"fdd_{n}_check_bpb", True):
             opt(f"fdd_{n}_check_bpb", 0)
-        fn = cfg.get(f"fdd_{n}_fn", "")
+        fn = _resolve_media_path(cfg.get(f"fdd_{n}_fn", ""))
         if fn and ftype != "none":
             opt(f"fdd_{n}_fn", fn)
 
@@ -718,7 +738,7 @@ def _write_86box_config(vm: VM, vm_dir: str, config_override: dict | None = None
             if bus_str == "atapi":
                 channel = cfg.get(f"cdrom_{n}_ide_channel") or _default_cdrom_channels[i]
                 opt(f"cdrom_{n}_ide_channel", channel)
-            fn = cfg.get(f"cdrom_{n}_fn", "")
+            fn = _resolve_media_path(cfg.get(f"cdrom_{n}_fn", ""))
             if fn:
                 opt(f"cdrom_{n}_fn", fn)
 
