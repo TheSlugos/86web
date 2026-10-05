@@ -83,7 +83,8 @@ def inject_file_or_zip(
     )
     if chk.returncode != 0:
         err_msg = (chk.stderr or chk.stdout or "").strip()
-        if "non DOS media" in err_msg or "Cannot initialize" in err_msg:
+        err_lower = err_msg.lower()
+        if "non dos media" in err_lower or "cannot initialize" in err_lower:
             raise MToolsError(
                 "The hard disk is not formatted with a DOS/FAT filesystem. "
                 "Please partition (FDISK) and format (FORMAT C:) the disk inside the VM before injecting files."

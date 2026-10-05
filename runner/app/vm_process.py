@@ -29,6 +29,19 @@ from .config import get_settings
 log = logging.getLogger("86web.vm_process")
 settings = get_settings()
 
+SIGCONT = getattr(signal, "SIGCONT", 18)
+SIGSTOP = getattr(signal, "SIGSTOP", 19)
+SIGTERM = getattr(signal, "SIGTERM", 15)
+SIGKILL = getattr(signal, "SIGKILL", 9)
+
+
+def _killpg(pid: int, sig: int):
+    """Safely deliver signal to process group on POSIX, or process on non-POSIX."""
+    if hasattr(os, "killpg"):
+        os.killpg(pid, sig)
+    else:
+        os.kill(pid, sig)
+
 
 @dataclass
 class VMProcesses:
@@ -422,7 +435,7 @@ class VMProcessManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=vm_dir,
-                preexec_fn=os.setpgrp,  # own process group so killpg/SIGSTOP covers AppImage children
+                preexec_fn=getattr(os, "setpgrp", None),  # own process group so killpg/SIGSTOP covers AppImage children
             )
             await asyncio.sleep(2.0)
 
@@ -465,7 +478,7 @@ class VMProcessManager:
         if procs.box86_proc and procs.box86_proc.poll() is None:
             if procs.paused:
                 try:
-                    os.killpg(procs.box86_proc.pid, signal.SIGCONT)
+                    _killpg(procs.box86_proc.pid, SIGCONT)
                 except Exception:
                     pass
             ipc_res = self.run_ipc_command(vm_id, "power_off", procs=procs)
@@ -543,7 +556,7 @@ class VMProcessManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=procs.vm_dir,
-                preexec_fn=os.setpgrp,
+                preexec_fn=getattr(os, "setpgrp", None),
             )
             procs.paused = False
             procs.started_at = time.time()
@@ -570,7 +583,7 @@ class VMProcessManager:
 
             # Fallback to SIGCONT
             try:
-                os.killpg(pid, signal.SIGCONT)
+                _killpg(pid, SIGCONT)
                 procs.paused = False
                 log.info("VM %d resumed (SIGCONT → pgrp %d fallback)", vm_id, pid)
                 return {"status": "resumed"}
@@ -588,7 +601,7 @@ class VMProcessManager:
 
             # Fallback to SIGSTOP
             try:
-                os.killpg(pid, signal.SIGSTOP)
+                _killpg(pid, SIGSTOP)
                 procs.paused = True
                 log.info("VM %d paused (SIGSTOP → pgrp %d fallback)", vm_id, pid)
                 return {"status": "paused"}
@@ -605,8 +618,8 @@ class VMProcessManager:
             try:
                 # Resume first if paused — a SIGSTOP'd process group won't respond to SIGTERM
                 if procs.paused:
-                    os.killpg(procs.box86_proc.pid, signal.SIGCONT)
-                os.killpg(procs.box86_proc.pid, signal.SIGTERM)
+                    _killpg(procs.box86_proc.pid, SIGCONT)
+                _killpg(procs.box86_proc.pid, SIGTERM)
             except Exception:
                 pass
         for proc in [procs.vnc_proc, procs.pulse_proc]:
@@ -618,7 +631,7 @@ class VMProcessManager:
         await asyncio.sleep(1.0)
         if procs.box86_proc and procs.box86_proc.poll() is None:
             try:
-                os.killpg(procs.box86_proc.pid, signal.SIGKILL)
+                _killpg(procs.box86_proc.pid, SIGKILL)
             except Exception:
                 pass
         for proc in [procs.vnc_proc, procs.pulse_proc]:
@@ -729,7 +742,8 @@ class VMProcessManager:
 
         import socket
         try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            af_unix = getattr(socket, "AF_UNIX", socket.AF_INET)
+            sock = socket.socket(af_unix, socket.SOCK_STREAM)
             sock.settimeout(2.0)
             sock.connect(sock_path)
             sock.sendall((cmd.strip() + "\n").encode("utf-8"))

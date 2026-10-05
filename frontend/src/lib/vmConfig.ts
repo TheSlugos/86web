@@ -1,4 +1,4 @@
-import { VM, VMConfig } from '../types'
+import type { VM, VMConfig } from '../types/index.ts'
 
 /**
  * Sanitizes a VMConfig for export/import to avoid leaking
@@ -51,7 +51,7 @@ export function parseAndValidateVMConfig(
     throw new Error('Invalid JSON file')
   }
 
-  if (!parsed || typeof parsed !== 'object') {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('Config file must be a JSON object')
   }
 

@@ -38,14 +38,6 @@
   - Test packet drivers (NE2000 / Novell IPX) inside DOS/Win9x guests.
   - Setup a two-VM DOOM deathmatch over IPX network.
 
-### Testing & Quality Assurance
-- [ ] **Comprehensive Test Suite & Verification Plan**
-  - Create integration test suite and checklist covering:
-    - FAT hard disk file & recursive ZIP injector (`mtools`).
-    - Live floppy/CD-ROM mounting, ejecting, write-protection toggling over IPC.
-    - VM lifecycle controls (`hard_reset`, `pause`/`resume`, `cad`, clean `power_off`).
-    - VM config JSON export & import with sanitization and name collision handling.
-
 ### Production Deployment & Migration
 - [ ] **Deploy Custom 86Web Instance to Production Server**
   - Package and deploy custom 86Web build (`TheSlugos/86web` + `TheSlugos/86Box`) to replace the standard instance on the server.
@@ -56,14 +48,23 @@
 ## ⚙️ In Progress / Next Up
 
 1. **Windows 3.1 Mouse Quirk Debugging**
-2. **Comprehensive Test Suite & Verification Plan**
-3. **Deploy Custom 86Web to Production Server**
-4. **Security Hardening (JWT Secret, Stream Auth, Rate Limiting)**
-5. **VM Group Networking Lab (Multiplayer DOOM)**
+2. **Deploy Custom 86Web to Production Server**
+3. **Security Hardening (JWT Secret, Stream Auth, Rate Limiting)**
+4. **VM Group Networking Lab (Multiplayer DOOM)**
 
 ---
 
 ## ✅ Completed
+
+- [x] **Comprehensive Automated Test Suite (`feat-test-suite`)**
+  - **Frontend Unit Tests (`vmConfig.test.ts`)**: 11 tests using Node native test runner (`node:test`) covering VM configuration import/export schema validation, format verification (`86web-vm-config`), media path sanitization, and name collision deduplication. Added `npm test` script to `package.json`.
+  - **MTools FAT Hard Disk Injector Tests (`test_mtools_injector.py`)**: 15 tests covering partition offset calculation (`sfdisk -J`), recursive directory creation (`ensure_fat_dir`), single file injection, ZIP archive extraction, and Zip Slip path traversal security. Made filesystem error detection case-insensitive.
+  - **IPC Protocol Engine Tests (`test_ipc_protocol.py`)**: 9 tests covering drive index mapping (`fdd_01`–`04`, `cdrom_01`–`04`), write-protection flag formatting (`ro`/`rw`), and socket communication handling.
+  - **VM Lifecycle Control Tests (`test_lifecycle.py`)**: 11 tests covering native IPC `hard_reset`, `pause`/`resume`, CAD fast-pathing, clean `power_off` shutdown, and signal/restart fallbacks.
+  - **Media Security Tests (`test_media_mount.py`)**: 8 tests covering drive key validation, path containment/security rules, and live mount/eject command routing.
+  - **Cross-Platform Compatibility**: Enhanced `vm_process.py` and `mtools.py` to run seamlessly on both Linux and Windows environments.
+  - **Unified Test Runner**: Created `scripts/run_tests.py` to execute both frontend and backend suites in one command with unified reporting (54 passed, 0 failed).
+
 
 - [x] **VM Configuration Export & Import (`feat-import-export-vm-config`)**
   - **Native JSON Architecture**: Export and import complete VM configurations using 86Web's native JSON representation, ensuring 100% schema fidelity with zero loss of hardware options or bus filter conflicts.
