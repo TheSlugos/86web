@@ -309,11 +309,18 @@ async def start_vm(
     db.commit()
 
     service = VMService()
-    result = await service.start_vm(vm_id, vm_dir, network_group_id=network_group_id)
-    if result.get("error"):
+    try:
+        result = await service.start_vm(vm_id, vm_dir, network_group_id=network_group_id)
+        if result.get("error"):
+            vm.status = "stopped"
+            db.commit()
+            raise HTTPException(500, result["error"])
+    except Exception as e:
         vm.status = "stopped"
         db.commit()
-        raise HTTPException(500, result["error"])
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(500, f"Failed to start VM: {e}")
 
     vm.status = "running"
     vm.vnc_port = result.get("vnc_port")

@@ -165,16 +165,28 @@ async def download_86box(release: dict = None) -> bool:
         os.makedirs(settings.box86_dir, exist_ok=True)
 
         if asset_name.endswith(".tar.gz"):
+            # Clean up old AppImage extracted directory if present
+            shutil.rmtree(os.path.join(settings.box86_dir, "extracted"), ignore_errors=True)
+            if os.path.exists(settings.box86_bin):
+                try:
+                    os.remove(settings.box86_bin)
+                except OSError:
+                    pass
             with tarfile.open(download_path, "r:gz") as tar:
                 tar.extractall(settings.box86_dir)
             # Find the 86Box binary
+            found = False
             for root, dirs, files in os.walk(settings.box86_dir):
+                if found:
+                    break
                 for fname in files:
                     if fname == "86Box":
                         src = os.path.join(root, fname)
                         dst = settings.box86_bin
-                        shutil.move(src, dst)
+                        if os.path.abspath(src) != os.path.abspath(dst):
+                            shutil.move(src, dst)
                         os.chmod(dst, 0o755)
+                        found = True
                         break
 
         elif asset_name.endswith(".AppImage"):
