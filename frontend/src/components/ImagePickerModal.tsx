@@ -149,11 +149,13 @@ function ColumnBrowser({ tree, kind, onSelect }: {
       <div ref={scrollRef} className="flex flex-1 overflow-x-auto min-h-0">
         {columns.map((col, ci) => {
           const dirPath = columnPath.slice(0, ci).join('/')
+          const isSingleCol = columns.length === 1
+          const colWidth = colWidths[ci] ?? (isSingleCol ? undefined : 280)
           return (
             <Fragment key={ci}>
               <div
-                className="overflow-y-auto flex-shrink-0 py-1 bg-white dark:bg-slate-900/30"
-                style={{ width: colWidths[ci] ?? 208 }}
+                className={`overflow-y-auto py-1 bg-white dark:bg-slate-900/30 ${isSingleCol && !colWidths[ci] ? 'flex-1' : 'flex-shrink-0'}`}
+                style={colWidth ? { width: colWidth } : undefined}
               >
                 {col.length === 0 ? (
                   <p className="px-4 py-3 text-xs text-slate-400 dark:text-slate-600 italic">Empty</p>
@@ -170,7 +172,7 @@ function ColumnBrowser({ tree, kind, onSelect }: {
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <FileIcon node={node} selected={isSelected} />
-                        <span className="truncate">{node.name}</span>
+                        <span className="truncate" title={node.name}>{node.name}</span>
                       </div>
                       {node.type === 'directory' ? (
                         <ChevronRight className={`w-3 h-3 shrink-0 ${isSelected ? 'text-blue-200' : 'text-slate-300 dark:text-slate-600'}`} />
@@ -183,11 +185,13 @@ function ColumnBrowser({ tree, kind, onSelect }: {
                   )
                 })}
               </div>
-              <ResizeHandle onMouseDown={e => startDrag(e, ci, colWidths[ci] ?? 208)} />
+              {(!isSingleCol || colWidths[ci]) && (
+                <ResizeHandle onMouseDown={e => startDrag(e, ci, colWidths[ci] ?? 280)} />
+              )}
             </Fragment>
           )
         })}
-        <div className="flex-1 bg-white dark:bg-slate-900/30" />
+        {columns.length > 1 && <div className="flex-1 bg-white dark:bg-slate-900/30" />}
       </div>
     </div>
   )
@@ -385,11 +389,13 @@ function WritableColumnBrowser({ tree, kind, onSelect }: {
       <div ref={scrollRef} className="flex flex-1 overflow-x-auto min-h-0">
         {columns.map((col, ci) => {
           const dirPath = columnPath.slice(0, ci).join('/')
+          const isSingleCol = columns.length === 1
+          const colWidth = colWidths[ci] ?? (isSingleCol ? undefined : 280)
           return (
             <Fragment key={ci}>
               <div
-                className="overflow-y-auto flex-shrink-0 py-1 bg-white dark:bg-slate-900/30"
-                style={{ width: colWidths[ci] ?? 208 }}
+                className={`overflow-y-auto py-1 bg-white dark:bg-slate-900/30 ${isSingleCol && !colWidths[ci] ? 'flex-1' : 'flex-shrink-0'}`}
+                style={colWidth ? { width: colWidth } : undefined}
               >
                 {col.length === 0 ? (
                   <p className="px-4 py-3 text-xs text-slate-400 dark:text-slate-600 italic">Empty</p>
@@ -409,7 +415,7 @@ function WritableColumnBrowser({ tree, kind, onSelect }: {
                         onClick={() => handleClick(ci, node, relPath)}
                       >
                         <FileIcon node={node} selected={isSelected} />
-                        <span className="truncate">{node.name}</span>
+                        <span className="truncate" title={node.name}>{node.name}</span>
                         {node.type === 'directory' ? (
                           <ChevronRight className={`w-3 h-3 shrink-0 ml-auto ${isSelected ? 'text-blue-200' : 'text-slate-300 dark:text-slate-600'}`} />
                         ) : (
@@ -433,11 +439,13 @@ function WritableColumnBrowser({ tree, kind, onSelect }: {
                   )
                 })}
               </div>
-              <ResizeHandle onMouseDown={e => startDrag(e, ci, colWidths[ci] ?? 208)} />
+              {(!isSingleCol || colWidths[ci]) && (
+                <ResizeHandle onMouseDown={e => startDrag(e, ci, colWidths[ci] ?? 280)} />
+              )}
             </Fragment>
           )
         })}
-        <div className="flex-1 bg-white dark:bg-slate-900/30" />
+        {columns.length > 1 && <div className="flex-1 bg-white dark:bg-slate-900/30" />}
       </div>
     </div>
   )

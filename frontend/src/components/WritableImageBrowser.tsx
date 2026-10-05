@@ -428,7 +428,7 @@ export default function WritableImageBrowser({ dark = false }: Props) {
               <Fragment key={ci}>
               <div
                 className={`overflow-y-auto flex-shrink-0 py-1 ${colBg}`}
-                style={{ width: colWidths[ci] ?? 208 }}
+                style={{ width: colWidths[ci] ?? 280 }}
               >
                 {col.length === 0 ? (
                   <p className={`px-4 py-3 text-xs italic ${emptyTxt}`}>Empty folder</p>
@@ -474,7 +474,7 @@ export default function WritableImageBrowser({ dark = false }: Props) {
                             onClick={e => e.stopPropagation()}
                           />
                         ) : (
-                          <span className="truncate">{node.name}</span>
+                          <span className="truncate" title={node.name}>{node.name}</span>
                         )}
                         {!isRenaming && (node.type === 'directory' ? (
                           <ChevronRight className={`w-3 h-3 shrink-0 ml-auto ${isSelected ? 'text-blue-200' : chevronDim}`} />
@@ -517,7 +517,7 @@ export default function WritableImageBrowser({ dark = false }: Props) {
                   )
                 })}
               </div>
-              <ResizeHandle onMouseDown={e => startDrag(e, ci, colWidths[ci] ?? 208)} dark={dark} />
+              <ResizeHandle onMouseDown={e => startDrag(e, ci, colWidths[ci] ?? 280)} dark={dark} />
               </Fragment>
             )
           })}

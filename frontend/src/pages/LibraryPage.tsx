@@ -127,7 +127,7 @@ function LibraryBrowser({ library }: { library: LibraryNode[] }) {
             <Fragment key={ci}>
               <div
                 className="overflow-y-auto flex-shrink-0 py-1 bg-white dark:bg-slate-900/30 text-xs"
-                style={{ width: colWidths[ci] ?? 208 }}
+                style={{ width: colWidths[ci] ?? 280 }}
               >
                 {col.length === 0 ? (
                   <p className="px-4 py-3 text-xs text-slate-400 dark:text-slate-600 italic">Empty folder</p>
@@ -145,7 +145,7 @@ function LibraryBrowser({ library }: { library: LibraryNode[] }) {
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <FileIcon node={node} selected={selected} />
-                        <span className="truncate">{node.name}</span>
+                        <span className="truncate" title={node.name}>{node.name}</span>
                       </div>
                       {node.type === 'directory' ? (
                         <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${selected ? 'text-blue-200' : 'text-slate-300 dark:text-slate-600'}`} />
@@ -158,7 +158,7 @@ function LibraryBrowser({ library }: { library: LibraryNode[] }) {
                   )
                 })}
               </div>
-              <ResizeHandle onMouseDown={e => startDrag(e, ci, colWidths[ci] ?? 208)} />
+              <ResizeHandle onMouseDown={e => startDrag(e, ci, colWidths[ci] ?? 280)} />
             </Fragment>
           ))}
           <div className="flex-1 bg-white dark:bg-slate-900/30" />
