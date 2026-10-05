@@ -7,10 +7,10 @@
  * Manager mode (vmName provided, no onSelect): upload / organise images for a VM.
  *              Shows all image types.  Shows an availability notice, no footer.
  */
-import { Fragment, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, Disc, FolderOpen, HardDrive, Loader2, Save, Trash2, Upload, X, CloudOff } from 'lucide-react'
+import { ChevronRight, Disc, FolderOpen, FolderPlus, HardDrive, Loader2, Save, Trash2, Upload, X, CloudOff } from 'lucide-react'
 import { libraryApi, formatBytes, LibraryNode } from '../lib/api'
 import { useStore } from '../store/useStore'
 
@@ -208,6 +208,8 @@ function WritableColumnBrowser({ tree, kind, onSelect }: {
   const { setActiveUpload, updateUploadProgress } = useStore()
   const [columnPath, setColumnPath] = useState<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [newFolderInput, setNewFolderInput] = useState<string | null>(null)
+  const newFolderRef = useRef<HTMLInputElement>(null)
   const [colWidths, setColWidths] = useState<number[]>([])
   const [deleting, setDeleting] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -216,6 +218,24 @@ function WritableColumnBrowser({ tree, kind, onSelect }: {
   const abortRef = useRef<AbortController | null>(null)
 
   const currentDir = columnPath.join('/')
+
+  useEffect(() => {
+    if (newFolderInput !== null) newFolderRef.current?.focus()
+  }, [newFolderInput !== null])
+
+  async function handleMkdir() {
+    const name = newFolderInput?.trim()
+    setNewFolderInput(null)
+    if (!name) return
+    const newPath = currentDir ? `${currentDir}/${name}` : name
+    try {
+      await libraryApi.mkdirImages(newPath)
+      qc.invalidateQueries({ queryKey: ['user-images-tree'] })
+      setColumnPath(currentDir ? [...columnPath, name] : [name])
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
 
   function startDrag(e: { preventDefault(): void; clientX: number }, ci: number, currentWidth: number) {
     e.preventDefault()
@@ -371,19 +391,54 @@ function WritableColumnBrowser({ tree, kind, onSelect }: {
               </Fragment>
             ))}
           </div>
-          <label className={`${uploading ? 'opacity-50 pointer-events-none' : ''} text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1`}>
-            {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-            {uploading ? 'Uploading…' : 'Upload'}
-            <input
-              type="file"
-              className="hidden"
-              accept=".img,.ima,.vfd,.flp,.iso,.bin,.cue,.mdf,.nrg"
-              multiple
-              onChange={e => { handleUploadFiles(e.target.files); e.target.value = '' }}
-            />
-          </label>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => setNewFolderInput('')}
+              title="New Folder"
+              className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors flex items-center gap-1"
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+              New Folder
+            </button>
+            <label className={`${uploading ? 'opacity-50 pointer-events-none' : ''} text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer flex items-center gap-1`}>
+              {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              {uploading ? 'Uploading…' : 'Upload'}
+              <input
+                type="file"
+                className="hidden"
+                accept=".img,.ima,.vfd,.flp,.iso,.bin,.cue,.mdf,.nrg"
+                multiple
+                onChange={e => { handleUploadFiles(e.target.files); e.target.value = '' }}
+              />
+            </label>
+          </div>
         </div>
       </div>
+
+      {/* New folder input bar */}
+      {newFolderInput !== null && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex-shrink-0">
+          <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">
+            New folder in{' '}
+            <span className="font-mono text-slate-700 dark:text-slate-300">
+              {currentDir || 'My Images'}
+            </span>:
+          </span>
+          <input
+            ref={newFolderRef}
+            className="flex-1 text-xs px-2.5 py-1 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white outline-none focus:border-blue-500"
+            placeholder="Folder name"
+            value={newFolderInput}
+            onChange={e => setNewFolderInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleMkdir()
+              if (e.key === 'Escape') setNewFolderInput(null)
+            }}
+          />
+          <button onClick={handleMkdir} className="text-xs px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium">Create</button>
+          <button onClick={() => setNewFolderInput(null)} className="text-xs px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300">Cancel</button>
+        </div>
+      )}
 
       {/* Columns */}
       <div ref={scrollRef} className="flex flex-1 overflow-x-auto min-h-0">
@@ -428,7 +483,7 @@ function WritableColumnBrowser({ tree, kind, onSelect }: {
                         onClick={e => { e.stopPropagation(); handleDelete(relPath) }}
                         disabled={!!deleting}
                         title="Delete"
-                        className={`opacity-0 group-hover:opacity-100 p-1 mr-1 rounded shrink-0 transition-all
+                        className={`opacity-30 group-hover:opacity-100 p-1 mr-1 rounded shrink-0 transition-all
                           ${isSelected ? 'hover:bg-blue-500 text-blue-200 hover:text-white' : 'text-slate-400 hover:text-red-400'}
                           disabled:opacity-20`}
                         style={{ opacity: isDeletingThis ? 1 : undefined }}
