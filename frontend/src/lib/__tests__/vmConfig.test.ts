@@ -6,18 +6,18 @@ import type { VMConfig } from '../../types/index.ts'
 describe('VM Configuration Utilities', () => {
   describe('sanitizeConfig', () => {
     it('strips private VM media paths while preserving shared library paths', () => {
-      const input: VMConfig = {
+      const input = {
         machine: 'ibm_at',
         cpu_family: 'i286',
-        cpu: '12',
-        memory: 4,
+        cpu_speed: 12,
+        mem_size: 4096,
         fdd_01_fn: '/data/vms/123-uuid/media/boot.img',
         fdd_02_fn: '/library/dos622/disk1.img',
         fdd_03_fn: 'custom/vms/test.img',
         fdd_04_fn: '',
         cdrom_01_fn: '/data/vms/456-uuid/media/win95.iso',
         cdrom_02_fn: '/library/iso/office.iso',
-      }
+      } as unknown as VMConfig
 
       const result = sanitizeConfig(input)
 
@@ -34,14 +34,14 @@ describe('VM Configuration Utilities', () => {
       // Preserves general machine config
       assert.strictEqual(result.machine, 'ibm_at')
       assert.strictEqual(result.cpu_family, 'i286')
-      assert.strictEqual(result.memory, 4)
+      assert.strictEqual((result as any).mem_size, 4096)
     })
 
     it('returns a shallow copy and does not mutate the original object', () => {
-      const input: VMConfig = {
+      const input = {
         machine: 'super7',
         fdd_01_fn: '/data/vms/foo/media/dos.img',
-      }
+      } as unknown as VMConfig
 
       const result = sanitizeConfig(input)
       assert.strictEqual(result.fdd_01_fn, '')
@@ -201,7 +201,7 @@ describe('VM Configuration Utilities', () => {
             machine: 'super7',
             fdd_01_fn: '/data/vms/id1/media/boot98.img',
             cdrom_01_fn: '/library/win98se.iso',
-          } as VMConfig,
+          } as unknown as VMConfig,
         }
 
         exportVMConfig(vm as any)
