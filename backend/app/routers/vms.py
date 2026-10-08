@@ -4,6 +4,7 @@ import shutil
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 
 log = logging.getLogger("86web")
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -35,13 +36,17 @@ def _vm_to_response(vm: VM) -> VMResponse:
     if vm.group:
         resp.group_name = vm.group.name
         resp.group_color = vm.group.color
+        resp.group_is_shared = vm.group.is_shared
     return resp
 
 
 def _group_to_response(g: VMGroup) -> VMGroupResponse:
     resp = VMGroupResponse.model_validate(g)
     resp.vm_count = len(g.vms)
-    resp.has_running_vms = any(vm.status == "running" for vm in g.vms)
+    resp.running_vm_count = sum(1 for vm in g.vms if vm.status == "running")
+    resp.has_running_vms = resp.running_vm_count > 0
+    if g.owner:
+        resp.owner_username = g.owner.username
     return resp
 
 
@@ -52,7 +57,12 @@ async def list_groups(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    groups = db.query(VMGroup).filter(VMGroup.user_id == current_user.id).all()
+    groups = (
+        db.query(VMGroup)
+        .filter(or_(VMGroup.user_id == current_user.id, VMGroup.is_shared == True))
+        .order_by(VMGroup.name)
+        .all()
+    )
     return [_group_to_response(g) for g in groups]
 
 
@@ -62,11 +72,15 @@ async def create_group(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if body.is_shared and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Only administrators can create shared groups")
+
     group = VMGroup(
         name=body.name,
         description=body.description,
         color=body.color,
         network_enabled=body.network_enabled,
+        is_shared=body.is_shared,
         user_id=current_user.id,
     )
     db.add(group)
@@ -82,9 +96,22 @@ async def update_group(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    group = db.query(VMGroup).filter(VMGroup.id == group_id, VMGroup.user_id == current_user.id).first()
+    group = db.query(VMGroup).filter(VMGroup.id == group_id).first()
     if not group:
-        raise HTTPException(404, "Group not found")
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    if group.user_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this group")
+
+    if body.is_shared is not None and body.is_shared != group.is_shared:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Only administrators can modify the shared status of a group")
+        if not body.is_shared and group.is_shared:
+            for vm in group.vms:
+                if vm.user_id != group.user_id:
+                    vm.group_id = None
+        group.is_shared = body.is_shared
+
     if body.name is not None:
         group.name = body.name
     if body.description is not None:
@@ -94,7 +121,7 @@ async def update_group(
     if body.network_enabled is not None:
         if body.network_enabled != group.network_enabled:
             if any(vm.status == "running" for vm in group.vms):
-                raise HTTPException(400, "Cannot change networking while a VM in the group is running. Stop all VMs first.")
+                raise HTTPException(status_code=400, detail="Cannot change networking while a VM in the group is running. Stop all VMs first.")
         group.network_enabled = body.network_enabled
     db.commit()
     db.refresh(group)
@@ -107,9 +134,16 @@ async def delete_group(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    group = db.query(VMGroup).filter(VMGroup.id == group_id, VMGroup.user_id == current_user.id).first()
+    group = db.query(VMGroup).filter(VMGroup.id == group_id).first()
     if not group:
-        raise HTTPException(404, "Group not found")
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    if group.user_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this group")
+
+    if any(vm.status == "running" for vm in group.vms):
+        raise HTTPException(status_code=400, detail="Cannot delete group while a VM in the group is running. Stop all VMs first.")
+
     # Unlink VMs from group
     for vm in group.vms:
         vm.group_id = None
@@ -147,10 +181,11 @@ async def create_vm(
         if disk_usage >= current_user.max_storage_gb * 1024 ** 3:
             raise HTTPException(429, f"Storage limit reached ({current_user.max_storage_gb} GB)")
 
-    # Validate group ownership
+    # Validate group ownership or shared status
     if body.group_id:
         group = db.query(VMGroup).filter(
-            VMGroup.id == body.group_id, VMGroup.user_id == current_user.id
+            VMGroup.id == body.group_id,
+            or_(VMGroup.user_id == current_user.id, VMGroup.is_shared == True),
         ).first()
         if not group:
             raise HTTPException(404, "Group not found")
@@ -227,7 +262,8 @@ async def update_vm(
             vm.group_id = None
         else:
             group = db.query(VMGroup).filter(
-                VMGroup.id == body.group_id, VMGroup.user_id == current_user.id
+                VMGroup.id == body.group_id,
+                or_(VMGroup.user_id == current_user.id, VMGroup.is_shared == True),
             ).first()
             if not group:
                 raise HTTPException(404, "Group not found")

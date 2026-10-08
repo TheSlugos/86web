@@ -20,10 +20,13 @@ export interface VMGroup {
   description?: string
   color: string
   network_enabled: boolean
+  is_shared: boolean
   user_id: number
   created_at: string
   vm_count: number
   has_running_vms: boolean
+  running_vm_count?: number
+  owner_username?: string
 }
 
 export interface VMConfig {
@@ -223,6 +226,7 @@ export interface VM {
   owner_username?: string
   group_name?: string
   group_color?: string
+  group_is_shared?: boolean
 }
 
 export interface SystemStats {

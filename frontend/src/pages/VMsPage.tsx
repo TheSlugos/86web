@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Play, Square, RotateCcw, Pencil, Trash2, Monitor, Loader2,
   FolderPlus, ChevronDown, ChevronRight, LayoutGrid, List,
-  HardDrive, Eye, Network, Settings2, CloudOff, Download, Upload
+  HardDrive, Eye, Network, Settings2, CloudOff, Download, Upload, Globe
 } from 'lucide-react'
 import { vmApi, systemApi, formatBytes } from '../lib/api'
 import { VM, VMConfig, VMGroup } from '../types'
@@ -261,16 +261,18 @@ function VMRow({ vm, onEdit, groupColor, onStartError }: { vm: VM; onEdit: () =>
 
 // ─── Group Create/Edit Modal ───────────────────────────────────────────────────
 
-function GroupModal({ onSave, onClose, initial, hasRunningVMs = false }: {
-  onSave: (name: string, desc: string, color: string, networkEnabled: boolean) => void
+function GroupModal({ onSave, onClose, initial, hasRunningVMs = false, isAdmin = false }: {
+  onSave: (name: string, desc: string, color: string, networkEnabled: boolean, isShared: boolean) => void
   onClose: () => void
-  initial?: { name: string; description?: string; color: string; network_enabled: boolean }
+  initial?: { name: string; description?: string; color: string; network_enabled: boolean; is_shared?: boolean }
   hasRunningVMs?: boolean
+  isAdmin?: boolean
 }) {
   const [name, setName] = useState(initial?.name || '')
   const [desc, setDesc] = useState(initial?.description || '')
   const [color, setColor] = useState(initial?.color || '#6366f1')
   const [networkEnabled, setNetworkEnabled] = useState(initial?.network_enabled ?? false)
+  const [isShared, setIsShared] = useState(initial?.is_shared ?? false)
   const colors = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
 
   return (
@@ -297,6 +299,7 @@ function GroupModal({ onSave, onClose, initial, hasRunningVMs = false }: {
                   onClick={() => setColor(c)}
                   className={clsx('w-7 h-7 rounded-full transition-all', color === c && 'ring-2 ring-offset-2 ring-slate-400 dark:ring-slate-600 scale-110')}
                   style={{ backgroundColor: c }}
+                  type="button"
                 />
               ))}
             </div>
@@ -333,10 +336,41 @@ function GroupModal({ onSave, onClose, initial, hasRunningVMs = false }: {
               </button>
             </div>
           </div>
+          {isAdmin && (
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Globe className="w-4 h-4 text-indigo-500" />
+                    Shared Group (Cross-User LAN)
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Allows all users to attach their VMs to this group and participate in this virtual LAN.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !isShared
+                    setIsShared(next)
+                    if (next && !networkEnabled && !hasRunningVMs) {
+                      setNetworkEnabled(true)
+                    }
+                  }}
+                  className={clsx(
+                    'flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none',
+                    isShared ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600',
+                  )}
+                >
+                  <span className={clsx('inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform', isShared ? 'translate-x-6' : 'translate-x-1')} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex gap-3 mt-6 justify-end">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={() => { onSave(name, desc, color, networkEnabled); onClose() }} disabled={!name} className="btn-primary">Save</button>
+          <button onClick={onClose} className="btn-secondary" type="button">Cancel</button>
+          <button onClick={() => { onSave(name, desc, color, networkEnabled, isShared); onClose() }} disabled={!name} className="btn-primary" type="button">Save</button>
         </div>
       </div>
     </div>
@@ -345,7 +379,7 @@ function GroupModal({ onSave, onClose, initial, hasRunningVMs = false }: {
 
 // ─── Collapsible Group Section ────────────────────────────────────────────────
 
-function GroupSection({ group, vms, view, onEditVM, collapsed, onToggle, cpuSpeeds, onStartError, onEditGroup, onDeleteGroup }: {
+function GroupSection({ group, vms, view, onEditVM, collapsed, onToggle, cpuSpeeds, onStartError, onEditGroup, onDeleteGroup, canManageGroup }: {
   group: VMGroup
   vms: VM[]
   view: ViewMode
@@ -356,6 +390,7 @@ function GroupSection({ group, vms, view, onEditVM, collapsed, onToggle, cpuSpee
   onStartError?: (msg: string) => void
   onEditGroup: () => void
   onDeleteGroup: () => void
+  canManageGroup: boolean
 }) {
   const groupColor = group.color
   return (
@@ -364,7 +399,19 @@ function GroupSection({ group, vms, view, onEditVM, collapsed, onToggle, cpuSpee
         <button onClick={onToggle} className="flex items-center gap-2 flex-1 text-left min-w-0">
           <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: groupColor }} />
           <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate">{group.name}</span>
-          <span className="text-xs text-slate-400 flex-shrink-0">{vms.length} VM{vms.length !== 1 ? 's' : ''}</span>
+          <span className="text-xs text-slate-400 flex-shrink-0">
+            {group.is_shared && group.vm_count !== undefined && group.vm_count !== vms.length
+              ? `${vms.length} of ${group.vm_count} VM${group.vm_count !== 1 ? 's' : ''}`
+              : `${vms.length} VM${vms.length !== 1 ? 's' : ''}`}
+          </span>
+          {group.is_shared && (
+            <span
+              className="flex-shrink-0 flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded font-medium"
+              title={group.owner_username ? `Shared LAN created by ${group.owner_username}` : 'Shared LAN accessible by all users'}
+            >
+              <Globe className="w-3 h-3" />Shared LAN
+            </span>
+          )}
           {group.network_enabled && (
             <span className="flex-shrink-0 flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
               <Network className="w-3 h-3" />Networked
@@ -374,17 +421,21 @@ function GroupSection({ group, vms, view, onEditVM, collapsed, onToggle, cpuSpee
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </span>
         </button>
-        <button onClick={onEditGroup} className="btn-ghost p-1.5 flex-shrink-0" title="Edit group">
-          <Settings2 className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={onDeleteGroup}
-          className="btn-ghost p-1.5 text-red-400 hover:text-red-600 flex-shrink-0"
-          title={group.has_running_vms ? 'Stop all VMs before deleting' : 'Delete group'}
-          disabled={group.has_running_vms}
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        {canManageGroup && (
+          <>
+            <button onClick={onEditGroup} className="btn-ghost p-1.5 flex-shrink-0" title="Edit group">
+              <Settings2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onDeleteGroup}
+              className="btn-ghost p-1.5 text-red-400 hover:text-red-600 flex-shrink-0"
+              title={group.has_running_vms ? 'Stop all VMs before deleting' : 'Delete group'}
+              disabled={group.has_running_vms}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </>
+        )}
       </div>
       {!collapsed && (
         view === 'grid'
@@ -414,7 +465,8 @@ function GroupSection({ group, vms, view, onEditVM, collapsed, onToggle, cpuSpee
 
 export default function VMsPage() {
   const qc = useQueryClient()
-  const { addToast, authConfig, serverOnline, openTabs, updateTabGroupColor } = useStore()
+  const { currentUser, addToast, authConfig, serverOnline, openTabs, updateTabGroupColor } = useStore()
+  const isAdmin = currentUser?.is_admin || !authConfig?.user_management
   const [view, setView] = useState<ViewMode>(() => {
     const savedMode = localStorage.getItem('vmViewPreference')
     return (savedMode === 'grid' || savedMode === 'list') ? savedMode : 'grid'
@@ -508,13 +560,13 @@ export default function VMsPage() {
   })
 
   const createGroupMut = useMutation({
-    mutationFn: (data: { name: string; description?: string; color: string; network_enabled?: boolean }) => vmApi.createGroup(data),
+    mutationFn: (data: { name: string; description?: string; color: string; network_enabled?: boolean; is_shared?: boolean }) => vmApi.createGroup(data),
     onSuccess: (g) => { qc.invalidateQueries({ queryKey: ['vm-groups'] }); addToast(`Group "${g.name}" created`) },
     onError: (e: any) => addToast(e.message || 'Failed to create group', 'error'),
   })
 
   const updateGroupMut = useMutation({
-    mutationFn: ({ id, ...data }: { id: number; name?: string; description?: string; color?: string; network_enabled?: boolean }) =>
+    mutationFn: ({ id, ...data }: { id: number; name?: string; description?: string; color?: string; network_enabled?: boolean; is_shared?: boolean }) =>
       vmApi.updateGroup(id, data),
     onSuccess: (g) => { qc.invalidateQueries({ queryKey: ['vm-groups'] }); qc.invalidateQueries({ queryKey: ['vms'] }); addToast(`Group "${g.name}" updated`) },
     onError: (e: any) => addToast(e.message || 'Failed to update group', 'error'),
@@ -531,10 +583,11 @@ export default function VMsPage() {
   )
 
   // Build group map (keyed by group_id so renames don't break the lookup)
+  const groupIds = new Set(groups.map(g => g.id))
   const grouped: Record<number, VM[]> = {}
   const ungrouped: VM[] = []
   filteredVMs.forEach(vm => {
-    if (vm.group_id) {
+    if (vm.group_id && groupIds.has(vm.group_id)) {
       if (!grouped[vm.group_id]) grouped[vm.group_id] = []
       grouped[vm.group_id].push(vm)
     } else {
@@ -683,6 +736,7 @@ export default function VMsPage() {
                   if (group.has_running_vms) return
                   setDeleteGroupConfirm(group)
                 }}
+                canManageGroup={isAdmin || (!group.is_shared && group.user_id === currentUser?.id)}
               />
             )
           })}
@@ -730,9 +784,10 @@ export default function VMsPage() {
       {/* Create group modal */}
       {showCreateGroup && (
         <GroupModal
+          isAdmin={isAdmin}
           onClose={() => setShowCreateGroup(false)}
-          onSave={(name, desc, color, networkEnabled) =>
-            createGroupMut.mutate({ name, description: desc, color, network_enabled: networkEnabled })
+          onSave={(name, desc, color, networkEnabled, isShared) =>
+            createGroupMut.mutate({ name, description: desc, color, network_enabled: networkEnabled, is_shared: isShared })
           }
         />
       )}
@@ -740,11 +795,18 @@ export default function VMsPage() {
       {/* Edit group modal */}
       {editGroup && (
         <GroupModal
-          initial={{ name: editGroup.name, description: editGroup.description, color: editGroup.color, network_enabled: editGroup.network_enabled }}
+          initial={{
+            name: editGroup.name,
+            description: editGroup.description,
+            color: editGroup.color,
+            network_enabled: editGroup.network_enabled,
+            is_shared: editGroup.is_shared,
+          }}
           hasRunningVMs={editGroup.has_running_vms}
+          isAdmin={isAdmin}
           onClose={() => setEditGroup(null)}
-          onSave={(name, desc, color, networkEnabled) =>
-            updateGroupMut.mutate({ id: editGroup.id, name, description: desc, color, network_enabled: networkEnabled })
+          onSave={(name, desc, color, networkEnabled, isShared) =>
+            updateGroupMut.mutate({ id: editGroup.id, name, description: desc, color, network_enabled: networkEnabled, is_shared: isShared })
           }
         />
       )}
@@ -765,7 +827,9 @@ export default function VMsPage() {
       {deleteGroupConfirm && (
         <ConfirmDialog
           title="Delete Group?"
-          message={`Delete "${deleteGroupConfirm.name}"? VMs in this group will be ungrouped.`}
+          message={deleteGroupConfirm.is_shared
+            ? `Delete shared LAN group "${deleteGroupConfirm.name}"? Member VMs from all users will be disconnected from this network.`
+            : `Delete "${deleteGroupConfirm.name}"? VMs in this group will be ungrouped.`}
           confirmLabel="Delete"
           onConfirm={() => { deleteGroupMut.mutate(deleteGroupConfirm.id); setDeleteGroupConfirm(null) }}
           onCancel={() => setDeleteGroupConfirm(null)}

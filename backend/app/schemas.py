@@ -60,6 +60,7 @@ class VMGroupBase(BaseModel):
     description: Optional[str] = None
     color: str = "#6366f1"
     network_enabled: bool = False
+    is_shared: bool = False
 
 class VMGroupCreate(VMGroupBase):
     pass
@@ -69,6 +70,7 @@ class VMGroupUpdate(BaseModel):
     description: Optional[str] = None
     color: Optional[str] = None
     network_enabled: Optional[bool] = None
+    is_shared: Optional[bool] = None
 
 class VMGroupResponse(VMGroupBase):
     id: int
@@ -76,6 +78,8 @@ class VMGroupResponse(VMGroupBase):
     created_at: datetime
     vm_count: int = 0
     has_running_vms: bool = False
+    running_vm_count: int = 0
+    owner_username: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -309,6 +313,7 @@ class VMResponse(VMBase):
     owner_username: Optional[str] = None
     group_name: Optional[str] = None
     group_color: Optional[str] = None
+    group_is_shared: Optional[bool] = None
 
     class Config:
         from_attributes = True

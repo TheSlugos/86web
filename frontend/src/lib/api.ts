@@ -119,9 +119,9 @@ export const vmApi = {
 
   // Groups
   listGroups: () => request<VMGroup[]>('/vms/groups'),
-  createGroup: (data: { name: string; description?: string; color: string; network_enabled?: boolean }) =>
+  createGroup: (data: { name: string; description?: string; color: string; network_enabled?: boolean; is_shared?: boolean }) =>
     request<VMGroup>('/vms/groups', { method: 'POST', body: JSON.stringify(data) }),
-  updateGroup: (id: number, data: Partial<{ name: string; description: string; color: string; network_enabled: boolean }>) =>
+  updateGroup: (id: number, data: Partial<{ name: string; description: string; color: string; network_enabled: boolean; is_shared: boolean }>) =>
     request<VMGroup>(`/vms/groups/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteGroup: (id: number) => request<void>(`/vms/groups/${id}`, { method: 'DELETE' }),
 }

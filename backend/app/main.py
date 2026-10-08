@@ -33,6 +33,18 @@ def _migrate_db():
         except Exception:
             pass  # Column already exists
 
+        # Add is_shared to vm_groups
+        try:
+            conn.execute(
+                __import__("sqlalchemy").text(
+                    "ALTER TABLE vm_groups ADD COLUMN is_shared BOOLEAN NOT NULL DEFAULT 0"
+                )
+            )
+            conn.commit()
+            log.info("Migration: added is_shared column to vm_groups")
+        except Exception:
+            pass  # Column already exists
+
 
 
 def _bootstrap_db():

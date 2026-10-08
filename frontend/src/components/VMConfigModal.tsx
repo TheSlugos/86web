@@ -16,7 +16,7 @@ interface Props {
   initialName?: string
   initialDesc?: string
   initialGroupId?: number
-  groups: { id: number; name: string; color: string; network_enabled: boolean }[]
+  groups: { id: number; name: string; color: string; network_enabled: boolean; is_shared?: boolean }[]
   onSave: (name: string, desc: string, groupId: number | null, config: VMConfig) => Promise<void>
   onClose: () => void
   title: string
@@ -795,13 +795,13 @@ export default function VMConfigModal({ vmId, initialConfig, initialName = '', i
                       {groupId && (() => { const g = groups.find(g => g.id === groupId); return g ? <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: g.color }} /> : null })()}
                       <select className="input flex-1" value={groupId ?? ''} onChange={e => setGroupId(e.target.value ? parseInt(e.target.value) : null)}>
                         <option value="">No group</option>
-                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}{g.is_shared ? ' (Shared LAN)' : ''}</option>)}
                       </select>
                     </div>
                     {(() => { const g = groups.find(g => g.id === groupId); return g?.network_enabled ? (
-                      <p className="text-xs text-blue-500 dark:text-blue-400 mt-1 flex items-center gap-1"><Network className="w-3 h-3" />Networking enabled — VMs in this group share a private LAN</p>
+                      <p className="text-xs text-blue-500 dark:text-blue-400 mt-1 flex items-center gap-1"><Network className="w-3 h-3" />Networking enabled — {g.is_shared ? 'VMs across all users in this shared group join the same virtual LAN' : 'VMs in this group share a private LAN'}</p>
                     ) : g && !g.network_enabled ? (
-                      <p className="text-xs text-slate-400 mt-1">No networking — VMs in this group are isolated</p>
+                      <p className="text-xs text-slate-400 mt-1">{g.is_shared ? 'Shared group — no networking enabled' : 'No networking — VMs in this group are isolated'}</p>
                     ) : null })()}
                   </Field>
                 </FieldGroup>

@@ -278,17 +278,23 @@ Browser
 5. Backend returns `{ vnc_port, ws_port }` to frontend
 6. Frontend opens noVNC WebSocket to `/vnc/{vm_id}/websockify` → nginx → runner → Xvnc
 
-### Group Networking
+### Group Networking & Cross-User LANs
 
 When a VM group has **Network** enabled:
 
 - A Linux bridge `br-group-{group_id}` is created (if not already up) when the first VM in the group starts
 - Each VM gets a TAP device `tap-vm{vm_id}` attached to the bridge
-- 86Box is configured to use `net_type=pcap` with `net_host_dev=tap-vm{vm_id}` at start time (not persisted to the DB — the UI setting remains `slirp` or whatever the user configured)
-- The bridge is isolated — no routing to the host or internet; VMs communicate at Layer 2 only
+- 86Box is configured to use `net_type=tap` with `net_host_dev=tap-vm{vm_id}` at start time (not persisted to the DB — the UI setting remains `slirp` or whatever the user configured)
+- The bridge is isolated — no routing to the host or internet; VMs communicate at Layer 2 only (ideal for IPX multiplayer, NetBEUI, or static TCP/IP)
 - DHCP is **not** provided automatically — assign static IPs inside the VMs, or run a DHCP server on one of them
 - The TAP is torn down when the VM stops; the bridge is torn down when the last VM in the group stops
 - Requires `NET_ADMIN` capability and `/dev/net/tun` on the runner container (already configured in `docker-compose.yml`)
+
+#### Shared Groups (Multi-Tenant LAN)
+- Administrators can designate any VM group as **Shared Group (Cross-User LAN)** (`is_shared=True`).
+- Shared groups are visible to and selectable by **all users** on the system.
+- VMs owned by different users that join the same shared group attach to the same `br-group-{id}` bridge, allowing cross-user multiplayer and LAN networking.
+- Only administrators can edit, toggle shared status, or delete shared groups. Member VMs are safely unlinked if a shared group is deleted.
 
 ---
 

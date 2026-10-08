@@ -35,6 +35,7 @@ class VMGroup(Base):
     description = Column(String(512), nullable=True)
     color = Column(String(16), default="#6366f1", nullable=False)
     network_enabled = Column(Boolean, default=False, nullable=False)
+    is_shared = Column(Boolean, default=False, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
