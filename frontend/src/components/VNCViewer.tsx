@@ -19,6 +19,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const rfbRef = useRef<any>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const sourceBufferRef = useRef<SourceBuffer | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [muted, setMuted] = useState(true)  // start muted so autoplay is allowed
@@ -238,6 +239,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       let sb: SourceBuffer
       try {
         sb = ms.addSourceBuffer(mimeType)
+        sourceBufferRef.current = sb
         // MP3 frames carry no timestamps, so 'sequence' mode is correct:
         // the browser assigns presentation time based on append order.
         sb.mode = 'sequence'
@@ -284,9 +286,21 @@ export default function VNCViewer({ vmId, vmName }: Props) {
             started = true
             audio.currentTime = Math.max(0, liveEdge - audioBuf)
             audio.play().catch(() => {})
-          } else if (started && liveEdge - audio.currentTime > 5.0) {
-            // Drift correction only for large gaps (clock skew / tab suspend).
-            audio.currentTime = liveEdge - audioBuf
+          } else if (started) {
+            const gap = liveEdge - audio.currentTime
+            if (gap > 1.2) {
+              // Hard resync for large delays (tab suspend, sleep, initial stall)
+              audio.currentTime = Math.max(0, liveEdge - audioBuf)
+              audio.playbackRate = 1.0
+            } else if (gap > audioBuf + 0.15) {
+              // Gently speed up by 4% to bleed off minor latency without pitch distortion
+              audio.playbackRate = 1.04
+            } else if (gap < audioBuf - 0.05) {
+              // Too close to underrun edge, slow down slightly
+              audio.playbackRate = 0.96
+            } else {
+              audio.playbackRate = 1.0
+            }
           }
         }
 
@@ -315,6 +329,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     return () => {
       controller.abort()
       audio.src = ''
+      sourceBufferRef.current = null
     }
   }, [isAlive, vmId])
 
@@ -424,10 +439,17 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     if (!audio) return
     const next = !muted
     audio.muted = next
-    // If the user is unmuting and the element isn't playing (e.g. autoplay was
-    // blocked while unmuted, or the element was reset), kick it off now.
-    if (!next && audio.paused) {
-      audio.play().catch(() => {})
+    // When unmuting, snap to the live edge immediately so any accumulated
+    // buffer isn't played as stale audio.
+    if (!next) {
+      const sb = sourceBufferRef.current
+      if (sb && sb.buffered.length > 0) {
+        const liveEdge = sb.buffered.end(sb.buffered.length - 1)
+        audio.currentTime = Math.max(0, liveEdge - audioBuf)
+      }
+      if (audio.paused) {
+        audio.play().catch(() => {})
+      }
     }
     setMuted(next)
   }
