@@ -269,8 +269,11 @@ async def audio_stream(vm_id: int):
             "-probesize", "32",
             "-analyzeduration", "0",
             "-f", "pulse",
+            "-sample_rate", "44100",
+            "-fragment_size", "2048",
             "-i", "box86_sink.monitor",
             "-c:a", "libmp3lame",
+            "-reservoir", "0",
             "-b:a", "128k",
             "-vn",
             "-f", "mp3",
@@ -305,7 +308,7 @@ async def audio_stream(vm_id: int):
 
         try:
             while True:
-                chunk = await proc.stdout.read(1024)
+                chunk = await proc.stdout.read(512)
                 if not chunk:
                     break
                 yield chunk

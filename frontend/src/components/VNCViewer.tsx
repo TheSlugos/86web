@@ -211,8 +211,8 @@ export default function VNCViewer({ vmId, vmName }: Props) {
   }, [isAlive, vmId])
 
   // Configurable audio buffer (seconds). Set AUDIO_BUFFER_SECS in .env to tune.
-  // Lower = less latency but more risk of underrun/choppiness.
-  const audioBuf = parseFloat(import.meta.env.VITE_AUDIO_BUFFER_SECS ?? '0.4')
+  // Lower = less latency but more risk of underrun/choppiness. Default 0.15s (150ms).
+  const audioBuf = parseFloat(import.meta.env.VITE_AUDIO_BUFFER_SECS ?? '0.15')
 
   // MSE-based audio streaming.
   // Using MediaSource Extensions lets us control the buffer directly, keeping
@@ -281,24 +281,27 @@ export default function VNCViewer({ vmId, vmName }: Props) {
         if (sb.buffered.length > 0) {
           const liveEdge = sb.buffered.end(sb.buffered.length - 1)
 
-          if (!started && liveEdge >= audioBuf + 0.2) {
-            // Start playback once we have audioBuf + a small headroom.
+          if (!started && liveEdge >= audioBuf + 0.05) {
+            // Start playback once we have audioBuf + minimal margin (50ms).
             started = true
             audio.currentTime = Math.max(0, liveEdge - audioBuf)
             audio.play().catch(() => {})
           } else if (started) {
             const gap = liveEdge - audio.currentTime
-            if (gap > 1.2) {
+            if (gap > 0.5) {
               // Hard resync for large delays (tab suspend, sleep, initial stall)
               audio.currentTime = Math.max(0, liveEdge - audioBuf)
               audio.playbackRate = 1.0
-            } else if (gap > audioBuf + 0.15) {
-              // Gently speed up by 4% to bleed off minor latency without pitch distortion
-              audio.playbackRate = 1.04
-            } else if (gap < audioBuf - 0.05) {
+            } else if (gap > audioBuf + 0.03) {
+              // Proportional catch-up: gently speed up to bleed off minor latency
+              // Rate scales smoothly from 1.01x up to 1.08x based on drift magnitude
+              const drift = gap - audioBuf
+              audio.playbackRate = Math.min(1.08, 1.0 + drift * 0.5)
+            } else if (gap < audioBuf - 0.03) {
               // Too close to underrun edge, slow down slightly
-              audio.playbackRate = 0.96
+              audio.playbackRate = 0.95
             } else {
+              // Within target buffer window (audioBuf ± 30ms)
               audio.playbackRate = 1.0
             }
           }

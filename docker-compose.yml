@@ -17,7 +17,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_AUDIO_BUFFER_SECS=${AUDIO_BUFFER_SECS:-0.4}
+        - VITE_AUDIO_BUFFER_SECS=${AUDIO_BUFFER_SECS:-0.15}
     container_name: 86web-nginx
     restart: unless-stopped
     ports:
