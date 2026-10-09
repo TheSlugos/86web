@@ -5,6 +5,10 @@ library/
 # Environment (contains secrets)
 .env
 
+# Docker local overrides
+docker-compose.override.yml
+docker-compose*.override.yml
+
 # Node / Frontend
 frontend/node_modules/
 frontend/dist/
