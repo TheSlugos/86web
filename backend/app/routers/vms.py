@@ -750,11 +750,13 @@ def _write_86box_config(vm: VM, vm_dir: str, config_override: dict | None = None
         enabled = bool(cfg.get(f"com_{port}_enabled", default_on))
         if enabled != default_on:
             opt(f"com_{port}_enabled", 1 if enabled else 0)
+            opt(f"com{port}_enabled", 1 if enabled else 0)
     _lpt_defaults = {1: True, 2: False, 3: False}
     for port in range(1, 4):
         default_on = _lpt_defaults[port]
         enabled = bool(cfg.get(f"lpt_{port}_enabled", default_on))
         if enabled != default_on:
+            opt(f"lpt{port}_enabled", 1 if enabled else 0)
             opt(f"lpt_{port}_enabled", 1 if enabled else 0)
 
     # ── [Other peripherals] ───────────────────────────────────────────────────
