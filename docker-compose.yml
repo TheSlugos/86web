@@ -18,7 +18,6 @@ services:
       dockerfile: Dockerfile
       args:
         - VITE_AUDIO_BUFFER_SECS=${AUDIO_BUFFER_SECS:-0.4}
-      network: host
     container_name: 86web-nginx
     restart: unless-stopped
     ports:
@@ -55,7 +54,6 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-      network: host
     container_name: 86web-backend
     restart: unless-stopped
     environment:
@@ -107,7 +105,6 @@ services:
     build:
       context: ./runner
       dockerfile: Dockerfile
-      network: host
     container_name: 86web-runner
     restart: unless-stopped
     environment:
