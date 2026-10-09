@@ -418,6 +418,7 @@ class VMProcessManager:
 
             box86_env = env.copy()
             box86_env["SDL_AUDIODRIVER"] = "pulse"
+            box86_env["PULSE_LATENCY_MSEC"] = "30"
             # Use the monitor of our null sink so ffmpeg can read and stream it
             box86_env["PULSE_SINK"] = "box86_sink"
             # Point Qt's AppConfigLocation to a writable /tmp path so 86Box reads

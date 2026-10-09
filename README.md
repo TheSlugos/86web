@@ -204,7 +204,7 @@ Quotas only apply when `USER_MANAGEMENT=true`. Admins are not subject to quotas.
 | `MAX_CONCURRENT_VMS` | `50` | Maximum number of VMs that can be registered/tracked simultaneously. |
 | `ACTIVE_VM_LIMIT` | `5` | Hard cap on simultaneously running VMs. 86Box is CPU-intensive; set this to a value your host can sustain. Use `GET /api/system/recommended-vm-limit` (admin) for a host-tuned suggestion. |
 | `VM_AUTO_SHUTDOWN_MINUTES` | `0` | Automatically stop VMs that have been running longer than this many minutes. `0` disables auto-shutdown. Useful for shared installs where users may forget to stop VMs (e.g. `1440` = 24 hours). |
-| `AUDIO_BUFFER_SECS` | `0.4` | Audio buffer duration in seconds passed to the frontend. Increase to reduce audio glitches on slow connections; decrease for lower latency. |
+| `AUDIO_BUFFER_SECS` | `0.15` | Audio buffer duration in seconds passed to the frontend. Increase to reduce audio glitches on slow connections; decrease for lower latency. |
 | `RUNNER_URL` | `http://runner:8001` | Backend-to-runner URL. Only change if running runner outside Docker. |
 
 ---
