@@ -47,6 +47,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
   const [writeProtectedMap, setWriteProtectedMap] = useState<Record<string, boolean>>({})
   const [isPointerLocked, setIsPointerLocked] = useState(false)
   const virtualMousePos = useRef<{ x: number; y: number }>({ x: 512, y: 384 })
+  const mouseButtonMaskRef = useRef(0)
 
   // 86Box keybindings — locked to defaults in 86box_global.cfg at runner startup.
   const KEY_TOGGLE_UI  = 'ctrl+alt+Next'   // Ctrl+Alt+PgDown — Toggle UI in fullscreen
@@ -249,7 +250,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     if (typeof window !== 'undefined' && !window.isSecureContext) {
       addToast(
         'Pointer Lock requires HTTPS or enabling Chrome flag: chrome://flags/#unsafely-treat-insecure-origin-as-secure for this origin.',
-        'warning'
+        'info'
       )
       return
     }
@@ -276,6 +277,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       document.exitPointerLock?.()
     }
     setIsPointerLocked(false)
+    mouseButtonMaskRef.current = 0
     focusCanvas()
     vmApi.sendKey(vmId, KEY_RELEASE_MOUSE).catch(() => {})
   }, [vmId, focusCanvas])
@@ -296,6 +298,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
         const w = rfb?._fbWidth || canvas?.clientWidth || 1024
         const h = rfb?._fbHeight || canvas?.clientHeight || 768
         virtualMousePos.current = { x: Math.floor(w / 2), y: Math.floor(h / 2) }
+        mouseButtonMaskRef.current = 0
         focusCanvas()
       }
     }
@@ -305,7 +308,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       if (typeof window !== 'undefined' && !window.isSecureContext) {
         addToast(
           'Pointer Lock rejected: Insecure context. Access via HTTPS or enable chrome://flags/#unsafely-treat-insecure-origin-as-secure for this origin.',
-          'warning'
+          'info'
         )
       } else {
         addToast('Pointer Lock was not granted by browser.', 'error')
@@ -387,16 +390,16 @@ export default function VNCViewer({ vmId, vmName }: Props) {
         return
       }
 
-      // Left (0) and Right (2) clicks: forward to noVNC at virtual position
+      // Left (0) and Right (2) clicks: forward to noVNC
       const rfb = rfbRef.current
       if (rfb) {
         e.stopPropagation()
         const bmask = 1 << e.button
-        if (typeof rfb._handleMouseButton === 'function') {
-          rfb._handleMouseButton(virtualMousePos.current.x, virtualMousePos.current.y, true, bmask)
+        mouseButtonMaskRef.current |= bmask
+        if (typeof rfb.sendPointerEvent === 'function') {
+          rfb.sendPointerEvent(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
         } else if (typeof rfb._sendMouse === 'function') {
-          rfb._mouseButtonMask = (rfb._mouseButtonMask || 0) | bmask
-          rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, rfb._mouseButtonMask)
+          rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
         }
       }
     }
@@ -414,11 +417,11 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       if (rfb) {
         e.stopPropagation()
         const bmask = 1 << e.button
-        if (typeof rfb._handleMouseButton === 'function') {
-          rfb._handleMouseButton(virtualMousePos.current.x, virtualMousePos.current.y, false, bmask)
+        mouseButtonMaskRef.current &= ~bmask
+        if (typeof rfb.sendPointerEvent === 'function') {
+          rfb.sendPointerEvent(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
         } else if (typeof rfb._sendMouse === 'function') {
-          rfb._mouseButtonMask = (rfb._mouseButtonMask || 0) & ~bmask
-          rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, rfb._mouseButtonMask)
+          rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
         }
       }
     }
@@ -443,10 +446,10 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       virtualMousePos.current.x = Math.max(0, Math.min(fbW, virtualMousePos.current.x + dx))
       virtualMousePos.current.y = Math.max(0, Math.min(fbH, virtualMousePos.current.y + dy))
 
-      if (typeof rfb._handleMouseMove === 'function') {
-        rfb._handleMouseMove(virtualMousePos.current.x, virtualMousePos.current.y)
+      if (typeof rfb.sendPointerEvent === 'function') {
+        rfb.sendPointerEvent(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
       } else if (typeof rfb._sendMouse === 'function') {
-        rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, rfb._mouseButtonMask || 0)
+        rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
       }
     }
 
