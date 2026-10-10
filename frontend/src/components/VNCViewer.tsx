@@ -138,6 +138,27 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     return () => document.removeEventListener('mousedown', onDown)
   }, [showDrivesMenu])
 
+  // Focus noVNC canvas so keyboard input is captured
+  const focusCanvas = useCallback(() => {
+    try {
+      const container = canvasRef.current
+      const canvas = container?.querySelector('canvas') || container
+      if (canvas) {
+        if (!canvas.getAttribute('tabindex')) {
+          canvas.setAttribute('tabindex', '0')
+        }
+        if (typeof (canvas as HTMLElement).focus === 'function') {
+          ;(canvas as HTMLElement).focus()
+        }
+      }
+      if (rfbRef.current && typeof rfbRef.current.focus === 'function') {
+        rfbRef.current.focus()
+      }
+    } catch (e) {
+      console.warn('focusCanvas error:', e)
+    }
+  }, [])
+
   // Connect noVNC when VM process is alive (running or paused)
   useEffect(() => {
     if (!isAlive || !canvasRef.current) {
@@ -180,6 +201,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           setError(null)
           rfb.scaleViewport = scaleToFit
           setUiVisible(false)  // 86Box starts in fullscreen with UI hidden
+          focusCanvas()
         })
 
         rfb.addEventListener('disconnect', (e: any) => {
@@ -210,27 +232,43 @@ export default function VNCViewer({ vmId, vmName }: Props) {
         rfbRef.current = null
       }
     }
-  }, [isAlive, vmId])
+  }, [isAlive, vmId, focusCanvas])
 
-  // Request pointer lock on the canvas element (with raw unadjusted movement for FPS games if available)
+  // Request pointer lock on the canvas element (safe secure-context handling)
   const requestPointerLock = useCallback(() => {
     if (!isAlive || !isRunning) return
     const container = canvasRef.current
     if (!container) return
     const canvas = container.querySelector('canvas') || container
-    if (canvas && document.pointerLockElement !== canvas) {
+    if (!canvas) return
+
+    // Immediately restore keyboard focus to the canvas
+    focusCanvas()
+
+    // Secure context check (Browsers enforce HTTPS/localhost for Pointer Lock)
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      addToast(
+        'Pointer Lock requires HTTPS or enabling Chrome flag: chrome://flags/#unsafely-treat-insecure-origin-as-secure for this origin.',
+        'warning'
+      )
+      return
+    }
+
+    if (document.pointerLockElement !== canvas) {
       try {
-        const p = (canvas as any).requestPointerLock({ unadjustedMovement: true })
-        if (p && typeof p.catch === 'function') {
-          p.catch(() => {
-            canvas.requestPointerLock?.()
+        const p = canvas.requestPointerLock?.()
+        if (p && typeof (p as any).catch === 'function') {
+          ;(p as any).catch((err: any) => {
+            console.warn('requestPointerLock rejected:', err)
+            focusCanvas()
           })
         }
-      } catch {
-        canvas.requestPointerLock?.()
+      } catch (e) {
+        console.warn('requestPointerLock error:', e)
+        focusCanvas()
       }
     }
-  }, [isAlive, isRunning])
+  }, [isAlive, isRunning, addToast, focusCanvas])
 
   // Release pointer lock and notify 86Box to release mouse capture
   const releasePointerLock = useCallback(() => {
@@ -238,10 +276,11 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       document.exitPointerLock?.()
     }
     setIsPointerLocked(false)
+    focusCanvas()
     vmApi.sendKey(vmId, KEY_RELEASE_MOUSE).catch(() => {})
-  }, [vmId])
+  }, [vmId, focusCanvas])
 
-  // Track browser pointer lock state changes
+  // Track browser pointer lock state changes & error handling
   useEffect(() => {
     const handleLockChange = () => {
       const container = canvasRef.current
@@ -257,16 +296,33 @@ export default function VNCViewer({ vmId, vmName }: Props) {
         const w = rfb?._fbWidth || canvas?.clientWidth || 1024
         const h = rfb?._fbHeight || canvas?.clientHeight || 768
         virtualMousePos.current = { x: Math.floor(w / 2), y: Math.floor(h / 2) }
+        focusCanvas()
+      }
+    }
+
+    const handleLockError = () => {
+      focusCanvas()
+      if (typeof window !== 'undefined' && !window.isSecureContext) {
+        addToast(
+          'Pointer Lock rejected: Insecure context. Access via HTTPS or enable chrome://flags/#unsafely-treat-insecure-origin-as-secure for this origin.',
+          'warning'
+        )
+      } else {
+        addToast('Pointer Lock was not granted by browser.', 'error')
       }
     }
 
     document.addEventListener('pointerlockchange', handleLockChange)
     document.addEventListener('mozpointerlockchange', handleLockChange)
+    document.addEventListener('pointerlockerror', handleLockError)
+    document.addEventListener('mozpointerlockerror', handleLockError)
     return () => {
       document.removeEventListener('pointerlockchange', handleLockChange)
       document.removeEventListener('mozpointerlockchange', handleLockChange)
+      document.removeEventListener('pointerlockerror', handleLockError)
+      document.removeEventListener('mozpointerlockerror', handleLockError)
     }
-  }, [])
+  }, [addToast, focusCanvas])
 
   // Auto-release pointer lock if VM stops running
   useEffect(() => {
@@ -278,18 +334,49 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     }
   }, [isRunning, isPointerLocked])
 
+  // Route keyboard input directly to noVNC whenever typing while VM is running
+  useEffect(() => {
+    if (!isRunning || !serverOnline) return
+
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      const active = document.activeElement
+      // Do not redirect focus if typing in an input, textarea, or open modal
+      if (
+        active &&
+        (active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.closest?.('[role="dialog"]') ||
+          active.closest?.('.modal'))
+      ) {
+        return
+      }
+
+      const canvas = canvasRef.current?.querySelector('canvas') || canvasRef.current
+      if (canvas && active !== canvas) {
+        focusCanvas()
+      }
+    }
+
+    window.addEventListener('keydown', handleWindowKeyDown, { capture: true })
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown, { capture: true })
+    }
+  }, [isRunning, serverOnline, focusCanvas])
+
   // Intercept and translate mouse movements & clicks while pointer lock is active
   useEffect(() => {
     const container = canvasRef.current
     if (!container) return
 
     const handleCanvasClick = () => {
-      if (!isPointerLocked && isRunning) {
+      focusCanvas()
+      if (!isPointerLocked && isRunning && typeof window !== 'undefined' && window.isSecureContext) {
         requestPointerLock()
       }
     }
 
     const handleMouseDown = (e: MouseEvent) => {
+      focusCanvas()
       if (!isPointerLocked) return
 
       // Middle-click (button 1): clean release muscle memory
@@ -382,7 +469,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       container.removeEventListener('mousemove', handleMouseMove, { capture: true } as any)
       container.removeEventListener('contextmenu', handleContextMenu, { capture: true } as any)
     }
-  }, [isPointerLocked, isRunning, requestPointerLock, releasePointerLock])
+  }, [isPointerLocked, isRunning, requestPointerLock, releasePointerLock, focusCanvas])
 
   // Configurable audio buffer (seconds). Set AUDIO_BUFFER_SECS in .env to tune.
   // Lower = less latency but more risk of underrun/choppiness. Default 0.15s (150ms).
@@ -741,6 +828,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           {/* Audio — only when running */}
           {isRunning && serverOnline && (
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={toggleMute}
               title={muted ? 'Unmute audio' : 'Mute audio'}
               className={`btn-ghost text-xs ${muted ? 'text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300' : 'text-green-500 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300'}`}
@@ -752,7 +840,8 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           {/* Toggle 86Box UI (menu + status bar) — only when running */}
           {isRunning && serverOnline && (
             <button
-              onClick={handleToggleUI}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { focusCanvas(); handleToggleUI() }}
               title={uiVisible ? 'Hide 86Box menu & status bar (Ctrl+Alt+PgDown)' : 'Show 86Box menu & status bar (Ctrl+Alt+PgDown)'}
               className={`btn-ghost text-xs ${uiVisible ? 'text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
             >
@@ -763,7 +852,15 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           {/* Mouse pointer lock toggle — only when running */}
           {isRunning && serverOnline && (
             <button
-              onClick={isPointerLocked ? releasePointerLock : requestPointerLock}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                focusCanvas()
+                if (isPointerLocked) {
+                  releasePointerLock()
+                } else {
+                  requestPointerLock()
+                }
+              }}
               title={isPointerLocked ? 'Release Mouse from VM (Middle-Click or Esc)' : 'Lock Mouse Pointer to VM'}
               className={`btn-ghost text-xs ${
                 isPointerLocked
@@ -939,7 +1036,8 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           {(isRunning || isPaused) && serverOnline ? (
             <>
               <button
-                onClick={handleCtrlAltDel}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { focusCanvas(); handleCtrlAltDel() }}
                 disabled={isPaused}
                 title={isPaused ? 'Resume VM before sending Ctrl+Alt+Del' : 'Send Ctrl+Alt+Del'}
                 className="btn-ghost text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs disabled:opacity-40 disabled:cursor-not-allowed"
@@ -948,7 +1046,8 @@ export default function VNCViewer({ vmId, vmName }: Props) {
                 Ctrl+Alt+Del
               </button>
               <button
-                onClick={handlePause}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { focusCanvas(); handlePause() }}
                 title={isPaused ? 'Resume VM' : 'Pause VM'}
                 className={`btn-ghost text-xs ${isPaused ? 'text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
               >
@@ -956,7 +1055,8 @@ export default function VNCViewer({ vmId, vmName }: Props) {
                 {isPaused ? 'Resume' : 'Pause'}
               </button>
               <button
-                onClick={handleReset}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { focusCanvas(); handleReset() }}
                 disabled={isPaused}
                 title={isPaused ? 'Resume VM before resetting' : 'Reset VM'}
                 className="btn-ghost text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1026,13 +1126,15 @@ export default function VNCViewer({ vmId, vmName }: Props) {
         {/* Mouse release / lock hint — top-right strip, visible while running */}
         {isRunning && (
           <button
+            onMouseDown={(e) => e.preventDefault()}
             className={`absolute top-0 right-0 z-10 flex flex-col items-center gap-2.5 px-2 py-3 rounded-bl-lg select-none cursor-pointer transition-colors ${
               isPointerLocked
                 ? 'bg-blue-600/70 hover:bg-blue-600/90 text-white backdrop-blur-sm shadow-md'
                 : 'bg-black/40 hover:bg-black/60 text-white/60 backdrop-blur-sm'
             }`}
-            title={isPointerLocked ? 'Mouse is locked (Click or Middle-Click to release)' : 'Click canvas to lock mouse'}
+            title={isPointerLocked ? 'Mouse is locked (Click or Middle-Click to release)' : 'Click to lock mouse'}
             onClick={() => {
+              focusCanvas()
               if (isPointerLocked) {
                 releasePointerLock()
               } else {
