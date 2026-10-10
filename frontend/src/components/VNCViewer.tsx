@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { Maximize2, RefreshCw, PowerOff, Play, Pause, AlertCircle, Monitor, Settings, FolderOpen, Volume2, VolumeX, Keyboard, CloudOff, Camera, ZoomIn, ZoomOut, Mouse, Eye, EyeOff, Disc, Save, ChevronDown, X } from 'lucide-react'
+import { Maximize2, RefreshCw, PowerOff, Play, Pause, AlertCircle, Monitor, Settings, FolderOpen, Volume2, VolumeX, Keyboard, CloudOff, Camera, ZoomIn, ZoomOut, Mouse, Eye, EyeOff, Disc, Save, ChevronDown, X, Lock } from 'lucide-react'
 import { vmApi, systemApi } from '../lib/api'
 import { useStore } from '../store/useStore'
 import { VMConfig } from '../types'
@@ -45,6 +45,8 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     currentPath: string
   } | null>(null)
   const [writeProtectedMap, setWriteProtectedMap] = useState<Record<string, boolean>>({})
+  const [isPointerLocked, setIsPointerLocked] = useState(false)
+  const virtualMousePos = useRef<{ x: number; y: number }>({ x: 512, y: 384 })
 
   // 86Box keybindings — locked to defaults in 86box_global.cfg at runner startup.
   const KEY_TOGGLE_UI  = 'ctrl+alt+Next'   // Ctrl+Alt+PgDown — Toggle UI in fullscreen
@@ -209,6 +211,178 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       }
     }
   }, [isAlive, vmId])
+
+  // Request pointer lock on the canvas element (with raw unadjusted movement for FPS games if available)
+  const requestPointerLock = useCallback(() => {
+    if (!isAlive || !isRunning) return
+    const container = canvasRef.current
+    if (!container) return
+    const canvas = container.querySelector('canvas') || container
+    if (canvas && document.pointerLockElement !== canvas) {
+      try {
+        const p = (canvas as any).requestPointerLock({ unadjustedMovement: true })
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {
+            canvas.requestPointerLock?.()
+          })
+        }
+      } catch {
+        canvas.requestPointerLock?.()
+      }
+    }
+  }, [isAlive, isRunning])
+
+  // Release pointer lock and notify 86Box to release mouse capture
+  const releasePointerLock = useCallback(() => {
+    if (document.pointerLockElement) {
+      document.exitPointerLock?.()
+    }
+    setIsPointerLocked(false)
+    vmApi.sendKey(vmId, KEY_RELEASE_MOUSE).catch(() => {})
+  }, [vmId])
+
+  // Track browser pointer lock state changes
+  useEffect(() => {
+    const handleLockChange = () => {
+      const container = canvasRef.current
+      const canvas = container?.querySelector('canvas')
+      const locked = Boolean(
+        document.pointerLockElement &&
+        (document.pointerLockElement === canvas || document.pointerLockElement === container)
+      )
+      setIsPointerLocked(locked)
+
+      if (locked) {
+        const rfb = rfbRef.current
+        const w = rfb?._fbWidth || canvas?.clientWidth || 1024
+        const h = rfb?._fbHeight || canvas?.clientHeight || 768
+        virtualMousePos.current = { x: Math.floor(w / 2), y: Math.floor(h / 2) }
+      }
+    }
+
+    document.addEventListener('pointerlockchange', handleLockChange)
+    document.addEventListener('mozpointerlockchange', handleLockChange)
+    return () => {
+      document.removeEventListener('pointerlockchange', handleLockChange)
+      document.removeEventListener('mozpointerlockchange', handleLockChange)
+    }
+  }, [])
+
+  // Auto-release pointer lock if VM stops running
+  useEffect(() => {
+    if (!isRunning && isPointerLocked) {
+      if (document.pointerLockElement) {
+        document.exitPointerLock?.()
+      }
+      setIsPointerLocked(false)
+    }
+  }, [isRunning, isPointerLocked])
+
+  // Intercept and translate mouse movements & clicks while pointer lock is active
+  useEffect(() => {
+    const container = canvasRef.current
+    if (!container) return
+
+    const handleCanvasClick = () => {
+      if (!isPointerLocked && isRunning) {
+        requestPointerLock()
+      }
+    }
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!isPointerLocked) return
+
+      // Middle-click (button 1): clean release muscle memory
+      if (e.button === 1) {
+        e.preventDefault()
+        e.stopPropagation()
+        releasePointerLock()
+        return
+      }
+
+      // Left (0) and Right (2) clicks: forward to noVNC at virtual position
+      const rfb = rfbRef.current
+      if (rfb) {
+        e.stopPropagation()
+        const bmask = 1 << e.button
+        if (typeof rfb._handleMouseButton === 'function') {
+          rfb._handleMouseButton(virtualMousePos.current.x, virtualMousePos.current.y, true, bmask)
+        } else if (typeof rfb._sendMouse === 'function') {
+          rfb._mouseButtonMask = (rfb._mouseButtonMask || 0) | bmask
+          rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, rfb._mouseButtonMask)
+        }
+      }
+    }
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (!isPointerLocked) return
+
+      if (e.button === 1) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
+
+      const rfb = rfbRef.current
+      if (rfb) {
+        e.stopPropagation()
+        const bmask = 1 << e.button
+        if (typeof rfb._handleMouseButton === 'function') {
+          rfb._handleMouseButton(virtualMousePos.current.x, virtualMousePos.current.y, false, bmask)
+        } else if (typeof rfb._sendMouse === 'function') {
+          rfb._mouseButtonMask = (rfb._mouseButtonMask || 0) & ~bmask
+          rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, rfb._mouseButtonMask)
+        }
+      }
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isPointerLocked) return
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      const dx = e.movementX ?? (e as any).mozMovementX ?? 0
+      const dy = e.movementY ?? (e as any).mozMovementY ?? 0
+      if (dx === 0 && dy === 0) return
+
+      const rfb = rfbRef.current
+      if (!rfb) return
+
+      const canvas = container.querySelector('canvas')
+      const fbW = rfb._fbWidth || canvas?.clientWidth || 1024
+      const fbH = rfb._fbHeight || canvas?.clientHeight || 768
+
+      virtualMousePos.current.x = Math.max(0, Math.min(fbW, virtualMousePos.current.x + dx))
+      virtualMousePos.current.y = Math.max(0, Math.min(fbH, virtualMousePos.current.y + dy))
+
+      if (typeof rfb._handleMouseMove === 'function') {
+        rfb._handleMouseMove(virtualMousePos.current.x, virtualMousePos.current.y)
+      } else if (typeof rfb._sendMouse === 'function') {
+        rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, rfb._mouseButtonMask || 0)
+      }
+    }
+
+    const handleContextMenu = (e: MouseEvent) => {
+      if (isPointerLocked) {
+        e.preventDefault()
+      }
+    }
+
+    container.addEventListener('click', handleCanvasClick)
+    container.addEventListener('mousedown', handleMouseDown, { capture: true })
+    container.addEventListener('mouseup', handleMouseUp, { capture: true })
+    container.addEventListener('mousemove', handleMouseMove, { capture: true })
+    container.addEventListener('contextmenu', handleContextMenu, { capture: true })
+
+    return () => {
+      container.removeEventListener('click', handleCanvasClick)
+      container.removeEventListener('mousedown', handleMouseDown, { capture: true } as any)
+      container.removeEventListener('mouseup', handleMouseUp, { capture: true } as any)
+      container.removeEventListener('mousemove', handleMouseMove, { capture: true } as any)
+      container.removeEventListener('contextmenu', handleContextMenu, { capture: true } as any)
+    }
+  }, [isPointerLocked, isRunning, requestPointerLock, releasePointerLock])
 
   // Configurable audio buffer (seconds). Set AUDIO_BUFFER_SECS in .env to tune.
   // Lower = less latency but more risk of underrun/choppiness. Default 0.15s (150ms).
@@ -586,6 +760,21 @@ export default function VNCViewer({ vmId, vmName }: Props) {
             </button>
           )}
 
+          {/* Mouse pointer lock toggle — only when running */}
+          {isRunning && serverOnline && (
+            <button
+              onClick={isPointerLocked ? releasePointerLock : requestPointerLock}
+              title={isPointerLocked ? 'Release Mouse from VM (Middle-Click or Esc)' : 'Lock Mouse Pointer to VM'}
+              className={`btn-ghost text-xs ${
+                isPointerLocked
+                  ? 'text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Mouse className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           {/* Settings */}
           <button onClick={() => setShowSettings(true)} title="VM Settings" className="btn-ghost text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs">
             <Settings className="w-3.5 h-3.5" />
@@ -824,24 +1013,48 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           </div>
         )}
 
-        {/* Mouse release hint — top-right strip, visible while running */}
+        {/* Pointer lock active notification banner */}
+        {isPointerLocked && isRunning && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-slate-900/90 text-slate-200 border border-slate-700/80 px-3.5 py-1.5 rounded-full shadow-xl text-xs backdrop-blur-sm pointer-events-none select-none transition-all">
+            <Mouse className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+            <span>
+              Mouse captured &bull; <kbd className="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-[10px] text-blue-300 font-mono">Middle-Click</kbd> or <kbd className="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-[10px] text-blue-300 font-mono">Esc</kbd> to release
+            </span>
+          </div>
+        )}
+
+        {/* Mouse release / lock hint — top-right strip, visible while running */}
         {isRunning && (
           <button
-            className="absolute top-0 right-0 z-10 flex flex-col items-center gap-2.5 bg-black/40 hover:bg-black/60 backdrop-blur-sm px-2 py-3 rounded-bl-lg select-none cursor-pointer transition-colors"
-            title="Click here to release mouse from VM"
-            onClick={() => vmApi.sendKey(vmId, KEY_RELEASE_MOUSE).catch(() => {})}
+            className={`absolute top-0 right-0 z-10 flex flex-col items-center gap-2.5 px-2 py-3 rounded-bl-lg select-none cursor-pointer transition-colors ${
+              isPointerLocked
+                ? 'bg-blue-600/70 hover:bg-blue-600/90 text-white backdrop-blur-sm shadow-md'
+                : 'bg-black/40 hover:bg-black/60 text-white/60 backdrop-blur-sm'
+            }`}
+            title={isPointerLocked ? 'Mouse is locked (Click or Middle-Click to release)' : 'Click canvas to lock mouse'}
+            onClick={() => {
+              if (isPointerLocked) {
+                releasePointerLock()
+              } else {
+                requestPointerLock()
+              }
+            }}
           >
-            <div className="relative w-4 h-4 text-white/60 flex-shrink-0">
+            <div className="relative w-4 h-4 flex-shrink-0">
               <Mouse className="w-4 h-4" />
-              <svg className="absolute inset-0 w-4 h-4" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <line x1="2" y1="12" x2="12" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
+              {isPointerLocked ? (
+                <Lock className="absolute -bottom-1 -right-1 w-2.5 h-2.5 text-blue-200" />
+              ) : (
+                <svg className="absolute inset-0 w-4 h-4" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <line x1="2" y1="12" x2="12" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              )}
             </div>
             <span
-              className="text-white/60 text-[11px] whitespace-nowrap"
+              className="text-[11px] whitespace-nowrap"
               style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
             >
-              Click here to release mouse from VM
+              {isPointerLocked ? 'Mouse Locked (Click or Middle-Click to release)' : 'Click here to release mouse from VM'}
             </span>
           </button>
         )}
