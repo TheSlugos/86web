@@ -46,7 +46,6 @@ export default function VNCViewer({ vmId, vmName }: Props) {
   } | null>(null)
   const [writeProtectedMap, setWriteProtectedMap] = useState<Record<string, boolean>>({})
   const [isPointerLocked, setIsPointerLocked] = useState(false)
-  const virtualMousePos = useRef<{ x: number; y: number }>({ x: 512, y: 384 })
   const mouseButtonMaskRef = useRef(0)
 
   // 86Box keybindings — locked to defaults in 86box_global.cfg at runner startup.
@@ -271,6 +270,39 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     }
   }, [isAlive, isRunning, addToast, focusCanvas])
 
+  // Helper to send pointer events to VNC in raw framebuffer coordinates
+  const sendVncPointer = useCallback((x: number, y: number, mask: number) => {
+    const rfb = rfbRef.current
+    if (!rfb) return
+
+    // 1. Direct RFB protocol message (bypasses display scaling and viewport offsets)
+    const RFBMessages = (rfb.constructor as any)?.messages
+    if (rfb._sock && RFBMessages && typeof RFBMessages.pointerEvent === 'function') {
+      try {
+        RFBMessages.pointerEvent(rfb._sock, Math.round(x), Math.round(y), mask)
+        return
+      } catch (err) {
+        console.warn('Direct pointerEvent failed, falling back:', err)
+      }
+    }
+
+    // 2. Fallback: sendPointerEvent public method if supported
+    if (typeof (rfb as any).sendPointerEvent === 'function') {
+      ;(rfb as any).sendPointerEvent(Math.round(x), Math.round(y), mask)
+      return
+    }
+
+    // 3. Fallback: internal _sendMouse (compensate for _display.absX dividing by _scale)
+    if (typeof (rfb as any)._sendMouse === 'function') {
+      const scale = (rfb as any)._display?._scale || 1
+      const vpX = (rfb as any)._display?._viewportLoc?.x || 0
+      const vpY = (rfb as any)._display?._viewportLoc?.y || 0
+      const cssX = (x - vpX) * scale
+      const cssY = (y - vpY) * scale
+      ;(rfb as any)._sendMouse(cssX, cssY, mask)
+    }
+  }, [])
+
   // Release pointer lock and notify 86Box to release mouse capture
   const releasePointerLock = useCallback(() => {
     if (document.pointerLockElement) {
@@ -297,7 +329,12 @@ export default function VNCViewer({ vmId, vmName }: Props) {
         const rfb = rfbRef.current
         const w = rfb?._fbWidth || canvas?.clientWidth || 1024
         const h = rfb?._fbHeight || canvas?.clientHeight || 768
-        virtualMousePos.current = { x: Math.floor(w / 2), y: Math.floor(h / 2) }
+        const centerX = Math.floor(w / 2)
+        const centerY = Math.floor(h / 2)
+        mouseButtonMaskRef.current = 0
+        focusCanvas()
+        sendVncPointer(centerX, centerY, 0)
+      } else {
         mouseButtonMaskRef.current = 0
         focusCanvas()
       }
@@ -325,7 +362,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       document.removeEventListener('pointerlockerror', handleLockError)
       document.removeEventListener('mozpointerlockerror', handleLockError)
     }
-  }, [addToast, focusCanvas])
+  }, [addToast, focusCanvas, sendVncPointer])
 
   // Auto-release pointer lock if VM stops running
   useEffect(() => {
@@ -391,17 +428,18 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       }
 
       // Left (0) and Right (2) clicks: forward to noVNC
+      e.stopPropagation()
+      const bmask = 1 << e.button
+      mouseButtonMaskRef.current |= bmask
+
       const rfb = rfbRef.current
-      if (rfb) {
-        e.stopPropagation()
-        const bmask = 1 << e.button
-        mouseButtonMaskRef.current |= bmask
-        if (typeof rfb.sendPointerEvent === 'function') {
-          rfb.sendPointerEvent(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
-        } else if (typeof rfb._sendMouse === 'function') {
-          rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
-        }
-      }
+      const canvas = container.querySelector('canvas')
+      const fbW = rfb?._fbWidth || canvas?.clientWidth || 1024
+      const fbH = rfb?._fbHeight || canvas?.clientHeight || 768
+      const centerX = Math.floor(fbW / 2)
+      const centerY = Math.floor(fbH / 2)
+
+      sendVncPointer(centerX, centerY, mouseButtonMaskRef.current)
     }
 
     const handleMouseUp = (e: MouseEvent) => {
@@ -413,17 +451,18 @@ export default function VNCViewer({ vmId, vmName }: Props) {
         return
       }
 
+      e.stopPropagation()
+      const bmask = 1 << e.button
+      mouseButtonMaskRef.current &= ~bmask
+
       const rfb = rfbRef.current
-      if (rfb) {
-        e.stopPropagation()
-        const bmask = 1 << e.button
-        mouseButtonMaskRef.current &= ~bmask
-        if (typeof rfb.sendPointerEvent === 'function') {
-          rfb.sendPointerEvent(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
-        } else if (typeof rfb._sendMouse === 'function') {
-          rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
-        }
-      }
+      const canvas = container.querySelector('canvas')
+      const fbW = rfb?._fbWidth || canvas?.clientWidth || 1024
+      const fbH = rfb?._fbHeight || canvas?.clientHeight || 768
+      const centerX = Math.floor(fbW / 2)
+      const centerY = Math.floor(fbH / 2)
+
+      sendVncPointer(centerX, centerY, mouseButtonMaskRef.current)
     }
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -442,15 +481,13 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       const canvas = container.querySelector('canvas')
       const fbW = rfb._fbWidth || canvas?.clientWidth || 1024
       const fbH = rfb._fbHeight || canvas?.clientHeight || 768
+      const centerX = Math.floor(fbW / 2)
+      const centerY = Math.floor(fbH / 2)
 
-      virtualMousePos.current.x = Math.max(0, Math.min(fbW, virtualMousePos.current.x + dx))
-      virtualMousePos.current.y = Math.max(0, Math.min(fbH, virtualMousePos.current.y + dy))
+      const targetX = Math.max(1, Math.min(fbW - 1, centerX + dx))
+      const targetY = Math.max(1, Math.min(fbH - 1, centerY + dy))
 
-      if (typeof rfb.sendPointerEvent === 'function') {
-        rfb.sendPointerEvent(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
-      } else if (typeof rfb._sendMouse === 'function') {
-        rfb._sendMouse(virtualMousePos.current.x, virtualMousePos.current.y, mouseButtonMaskRef.current)
-      }
+      sendVncPointer(targetX, targetY, mouseButtonMaskRef.current)
     }
 
     const handleContextMenu = (e: MouseEvent) => {
@@ -472,7 +509,7 @@ export default function VNCViewer({ vmId, vmName }: Props) {
       container.removeEventListener('mousemove', handleMouseMove, { capture: true } as any)
       container.removeEventListener('contextmenu', handleContextMenu, { capture: true } as any)
     }
-  }, [isPointerLocked, isRunning, requestPointerLock, releasePointerLock, focusCanvas])
+  }, [isPointerLocked, isRunning, requestPointerLock, releasePointerLock, focusCanvas, sendVncPointer])
 
   // Configurable audio buffer (seconds). Set AUDIO_BUFFER_SECS in .env to tune.
   // Lower = less latency but more risk of underrun/choppiness. Default 0.15s (150ms).
