@@ -503,9 +503,6 @@ async def get_vm_status(
 
 def _write_device_settings(cfg: dict, device_settings: dict) -> str:
     """Generate [Device Name] INI sections for device-specific config."""
-    if not device_settings:
-        return ""
-
     from .. import hardware_lists
 
     # Build a lookup: device_id → {name, config}
@@ -523,20 +520,56 @@ def _write_device_settings(cfg: dict, device_settings: dict) -> str:
         for d in getter():
             all_devices[d.get("id") or d.get("internal_name", "")] = d
 
+    # Copy device settings or initialize empty
+    effective_settings = {k: dict(v) for k, v in (device_settings or {}).items()}
+
+    # Ensure active sound card has device settings section if not explicitly configured
+    active_snd = cfg.get("sndcard", "none")
+    if active_snd and active_snd != "none" and active_snd not in effective_settings:
+        dev = all_devices.get(active_snd)
+        if dev:
+            effective_settings[active_snd] = {
+                entry["name"]: entry["default"]
+                for entry in (dev.get("config") or [])
+                if "default" in entry
+            }
+
+    if not effective_settings:
+        return ""
+
     out = ""
-    for device_id, settings in device_settings.items():
+    for device_id, settings in effective_settings.items():
         if not settings:
             continue
         device = all_devices.get(device_id)
         if not device:
             continue
-        # Build type map for this device's config entries
+        # Build type map and defaults map for this device's config entries
         type_map = {}
+        defaults_map = {}
         for entry in device.get("config") or []:
             type_map[entry["name"]] = entry.get("type", "int")
+            if "default" in entry:
+                defaults_map[entry["name"]] = entry["default"]
+
+        is_sb = str(device_id).lower().startswith("sb") or "sound blaster" in device.get("name", "").lower()
+        dev_out_settings = dict(settings)
+
+        # Ensure dspver is valid for Sound Blaster cards (dspver <= 1 means SADLIB / no DSP 0.00)
+        if is_sb and "dspver" in type_map:
+            dsp_val = dev_out_settings.get("dspver")
+            try:
+                dsp_int = int(dsp_val) if dsp_val is not None else 0
+            except (ValueError, TypeError):
+                dsp_int = 0
+            if dsp_int <= 1:
+                def_val = defaults_map.get("dspver")
+                if not def_val or def_val <= 1:
+                    def_val = 11 if "16" in str(device_id) else (9 if "pro" in str(device_id) else (14 if "awe" in str(device_id) else 3))
+                dev_out_settings["dspver"] = def_val
 
         out += f"\n[{device['name']}]\n"
-        for key, value in settings.items():
+        for key, value in dev_out_settings.items():
             t = type_map.get(key, "int")
             if t in ("hex16",):
                 out += f"{key} = {int(value):04x}\n"

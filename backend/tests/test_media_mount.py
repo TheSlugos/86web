@@ -262,3 +262,65 @@ def test_write_86box_config_resolves_bare_cdrom_to_media(tmp_path):
     content = cfg_path.read_text(encoding="utf-8")
     assert "cdrom_01_fn = media/setup.iso" in content
 
+
+def test_write_86box_config_emits_sound_blaster_with_valid_dspver(tmp_path):
+    from app.routers.vms import _write_86box_config
+    vm_dir = tmp_path / "test-vm-sb"
+    vm_dir.mkdir(parents=True)
+
+    mock_vm = MagicMock(
+        id=3,
+        user_id=1,
+        uuid="test-uuid-sb",
+        config={
+            "machine": "ibmxt",
+            "cpu_family": "8088",
+            "sndcard": "sb16",
+        },
+    )
+
+    with patch("app.hardware_lists.get_cpu_by_index", return_value=(4772727, 1)), \
+         patch("app.hardware_lists.machine_has_builtin_video", return_value=False):
+        _write_86box_config(mock_vm, str(vm_dir))
+
+    cfg_path = vm_dir / "86box.cfg"
+    assert cfg_path.exists()
+    content = cfg_path.read_text(encoding="utf-8")
+    assert "[Sound Blaster 16]" in content
+    assert "dspver = 11" in content
+
+
+def test_write_86box_config_repairs_corrupted_zero_dspver(tmp_path):
+    from app.routers.vms import _write_86box_config
+    vm_dir = tmp_path / "test-vm-sb-repair"
+    vm_dir.mkdir(parents=True)
+
+    mock_vm = MagicMock(
+        id=4,
+        user_id=1,
+        uuid="test-uuid-sb-repair",
+        config={
+            "machine": "ibmxt",
+            "cpu_family": "8088",
+            "sndcard": "sb16",
+            "device_settings": {
+                "sb16": {
+                    "dspver": 0,
+                    "base": 544,
+                    "irq": 7,
+                }
+            },
+        },
+    )
+
+    with patch("app.hardware_lists.get_cpu_by_index", return_value=(4772727, 1)), \
+         patch("app.hardware_lists.machine_has_builtin_video", return_value=False):
+        _write_86box_config(mock_vm, str(vm_dir))
+
+    cfg_path = vm_dir / "86box.cfg"
+    assert cfg_path.exists()
+    content = cfg_path.read_text(encoding="utf-8")
+    assert "[Sound Blaster 16]" in content
+    assert "dspver = 11" in content
+    assert "dspver = 0" not in content
+

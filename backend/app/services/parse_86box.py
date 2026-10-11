@@ -165,6 +165,10 @@ class MacroResolver:
         """Resolve an arbitrary expression string to int."""
         return self._eval(expr.strip(), set()) or 0
 
+    def resolve_expr_opt(self, expr: str) -> Optional[int]:
+        """Resolve an arbitrary expression string to int, returning None if unresolved."""
+        return self._eval(expr.strip(), set())
+
     def _eval(self, expr: str, seen: set) -> Optional[int]:
         expr = expr.strip()
         # Strip outer parentheses repeatedly
@@ -379,12 +383,13 @@ class DeviceConfigParser:
         }
 
         # default_int
-        m = re.search(r'\.default_int\s*=\s*(-?(?:0x[0-9a-fA-F]+|\d+))', body)
+        m = re.search(r'\.default_int\s*=\s*([^,\n}]+)', body)
         if m:
-            try:
-                entry['default_int'] = int(m.group(1), 0)
-            except ValueError:
-                entry['default_int'] = 0
+            val_str = m.group(1).strip()
+            if val_str not in ('NULL', ''):
+                val = self.resolver.resolve_expr_opt(val_str)
+                if val is not None:
+                    entry['default_int'] = val
 
         # default_string
         m = re.search(r'\.default_string\s*=\s*"([^"]*)"', body)
@@ -442,11 +447,17 @@ class DeviceConfigParser:
                 break
             entry_body = extract_balanced_braces(inner, bpos)
             desc = get_string_field(entry_body, 'description')
-            vm = re.search(r'\.value\s*=\s*(-?(?:0x[0-9a-fA-F]+|\d+))', entry_body)
+            vm = re.search(r'\.value\s*=\s*([^,\n}]+)', entry_body)
             if desc:
+                val = 0
+                if vm:
+                    val_str = vm.group(1).strip()
+                    resolved = self.resolver.resolve_expr_opt(val_str)
+                    if resolved is not None:
+                        val = resolved
                 results.append({
                     'description': desc,
-                    'value': int(vm.group(1), 0) if vm else 0,
+                    'value': val,
                 })
             i = bpos + len(entry_body)
         return results
@@ -1007,10 +1018,12 @@ class DatabaseBuilder:
 
     def _load_macros(self):
         """Load relevant header files for macro resolution."""
-        for hdr in ['machine.h', 'device.h', 'video.h', 'sound.h', 'network.h', 'hdc.h', 'cdrom.h']:
-            path = self.inc / hdr
-            if path.exists():
-                self.resolver.load_file(path)
+        if self.inc.exists():
+            for path in sorted(self.inc.glob('*.h')):
+                try:
+                    self.resolver.load_file(path)
+                except Exception:
+                    pass
         # Also load cpu.h
         cpu_h = self.src / 'cpu' / 'cpu.h'
         if cpu_h.exists():
