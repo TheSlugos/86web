@@ -178,6 +178,9 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           setError(null)
           rfb.scaleViewport = scaleToFit
           setUiVisible(false)  // 86Box starts in fullscreen with UI hidden
+          try {
+            rfb.focus()
+          } catch {}
         })
 
         rfb.addEventListener('disconnect', (e: any) => {
@@ -799,7 +802,11 @@ export default function VNCViewer({ vmId, vmName }: Props) {
 
       {/* VNC canvas area */}
       <div className="flex-1 relative bg-black">
-        <div ref={canvasRef} className={`absolute inset-0 ${scaleToFit ? 'overflow-hidden' : 'overflow-auto'}`} />
+        <div
+          ref={canvasRef}
+          onClick={() => { try { rfbRef.current?.focus() } catch {} }}
+          className={`absolute inset-0 ${scaleToFit ? 'overflow-hidden' : 'overflow-auto'}`}
+        />
 
         {loading && isRunning && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-slate-300">

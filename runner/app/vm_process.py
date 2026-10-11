@@ -398,7 +398,7 @@ class VMProcessManager:
                 os.symlink(box86_cache_dir, cache_link)
 
             cfg_path = os.path.join(vm_dir, "86box.cfg")
-            _inject_cfg_options(cfg_path, {"General": {"hide_tool_bar": "1", "start_in_fullscreen": "1"}})
+            _inject_cfg_options(cfg_path, {"General": {"hide_tool_bar": "1", "start_in_fullscreen": "0"}})
             box86_args = [
                 settings.box86_exec,  # extracted binary if available, else AppImage
                 "--config", cfg_path,
