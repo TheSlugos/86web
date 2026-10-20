@@ -682,7 +682,6 @@ def _write_86box_config(vm: VM, vm_dir: str, config_override: dict | None = None
     opt("net_01_net_type", net_type)
     if cfg.get("net_host_dev"):
         opt("net_01_host_device", cfg["net_host_dev"])
-    opt("net_01_link", 0)
 
     # ── [Storage controllers] ─────────────────────────────────────────────────
     section("Storage controllers")
