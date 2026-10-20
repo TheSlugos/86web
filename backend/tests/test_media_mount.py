@@ -324,3 +324,34 @@ def test_write_86box_config_repairs_corrupted_zero_dspver(tmp_path):
     assert "dspver = 11" in content
     assert "dspver = 0" not in content
 
+
+def test_write_86box_config_serial_and_parallel_ports_disabled(tmp_path):
+    from app.routers.vms import _write_86box_config
+    vm_dir = tmp_path / "test-vm-ports"
+    vm_dir.mkdir(parents=True)
+
+    mock_vm = MagicMock(
+        id=5,
+        user_id=1,
+        uuid="test-uuid-ports",
+        config={
+            "machine": "ibmxt",
+            "cpu_family": "8088",
+            "com_1_enabled": False,
+            "com_2_enabled": False,
+            "lpt_1_enabled": False,
+        },
+    )
+
+    with patch("app.hardware_lists.get_cpu_by_index", return_value=(4772727, 1)), \
+         patch("app.hardware_lists.machine_has_builtin_video", return_value=False):
+        _write_86box_config(mock_vm, str(vm_dir))
+
+    cfg_path = vm_dir / "86box.cfg"
+    assert cfg_path.exists()
+    content = cfg_path.read_text(encoding="utf-8")
+    assert "[Ports (COM & LPT)]" in content
+    assert "serial1_enabled = 0" in content
+    assert "serial2_enabled = 0" in content
+    assert "lpt1_enabled = 0" in content
+

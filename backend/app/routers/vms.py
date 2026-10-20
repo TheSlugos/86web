@@ -818,6 +818,7 @@ def _write_86box_config(vm: VM, vm_dir: str, config_override: dict | None = None
         default_on = _com_defaults[port]
         enabled = bool(cfg.get(f"com_{port}_enabled", default_on))
         if enabled != default_on:
+            opt(f"serial{port}_enabled", 1 if enabled else 0)
             opt(f"com_{port}_enabled", 1 if enabled else 0)
             opt(f"com{port}_enabled", 1 if enabled else 0)
     _lpt_defaults = {1: True, 2: False, 3: False}
