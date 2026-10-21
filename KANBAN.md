@@ -26,11 +26,12 @@
   - Document best practices for public deployment (e.g. Cloudflare Zero Trust / Access, VNC passwords, SSL termination).
 
 ### UI & Input Controls
-- [ ] **Windows 3.1 & DOS Mouse Movement Investigation**
-  - Investigate cursor freezing/clipping when moving towards the top of the screen in Windows 3.1.
-  - Check browser pointer lock (`requestPointerLock`) integration in noVNC canvas.
-  - Check 86Box Qt menu bar / window border offset along the top edge inside Xvfb.
-  - Verify guest mouse driver selection (Logitech Bus Mouse vs Microsoft PS/2 / Serial).
+- [ ] **Fix 86Box Menu & Status Bar Toggle Button**
+  - The button that hides/shows the 86Box menu and status bars in `VNCViewer.tsx` is not toggling the UI as expected.
+  - Investigate `xdotool` key mapping (`Page_Down` vs `Next`), `--clearmodifiers` flag interaction with Ctrl+Alt, or add a dedicated `toggle_ui` command to the native 86Box IPC protocol.
+- [ ] **Client-Side Gamepad & Joystick Support (HTML5 Gamepad API)**
+  - Capture Gamepad API inputs (`navigator.getGamepads()`) in the browser and stream axis/button states over a dedicated WebSocket to the runner.
+  - Bridge inputs into a virtual Linux joystick via `/dev/uinput` in `86web-runner` so 86Box's SDL2 layer maps it to the emulated Gameport for games like *X-Wing* and *TIE Fighter*.
 
 ### Virtual Networking & Multiplayer Gaming Lab
 - [ ] **Explore & Verify VM Group Networking**
@@ -39,22 +40,28 @@
   - Setup a two-VM DOOM deathmatch over IPX network.
 
 ### Production Deployment & Migration
-- [ ] **Deploy Custom 86Web Instance to Production Server**
-  - Package and deploy custom 86Web build (`TheSlugos/86web` + `TheSlugos/86Box`) to replace the standard instance on the server.
-  - Verify persistent data migration (`/data/vms`, `/data/roms`, database).
+- [x] **Deploy Custom 86Web & Patched 86Box Release to Production Server**
+  - Deployed `TheSlugos/86web` (`feat-shared-vm-groups`) and `86Box v7.0.0-86web.3` to production server (`192.168.1.176`).
+  - Successfully verified end-to-end VM lifecycle, socket isolation, and mouse streaming.
 
 ---
 
 ## ⚙️ In Progress / Next Up
 
-1. **Windows 3.1 Mouse Quirk Debugging**
-2. **Deploy Custom 86Web to Production Server**
-3. **Security Hardening (JWT Secret, Stream Auth, Rate Limiting)**
-4. **VM Group Networking Lab (Multiplayer DOOM)**
+1. **VM Group Networking Lab (Packet Drivers & Multi-VM DOOM / IPX)**
+2. **Client-Side Joystick Streaming Support (HTML5 Gamepad -> `/dev/uinput`)**
+3. **Fix 86Box Menu & Status Bar Toggle Button (`xdotool` vs IPC `toggle_ui`)**
+4. **Security Hardening (JWT Secret, Stream Auth, Rate Limiting)**
 
 ---
 
 ## ✅ Completed
+
+- [x] **Low-Latency Native IPC Mouse Lock Stream via WebSocket (`0cfcb41`)**
+  - Added `mouse_move`, `mouse_btn`, and `mouse_capture` commands to 86Box UNIX socket IPC.
+  - Built low-latency `/vnc/{vm_id}/mouse` WebSocket endpoint in runner with Nginx proxy passthrough.
+  - Added HTML5 Pointer Lock API support in `VNCViewer.tsx` streaming relative mouse deltas directly to 86Box, fixing Windows title bar clamping and DOS capture.
+  - Released `86Box v7.0.0-86web.3` via GitHub Actions and verified on production server.
 
 - [x] **Comprehensive Automated Test Suite (`feat-test-suite`)**
   - **Frontend Unit Tests (`vmConfig.test.ts`)**: 11 tests using Node native test runner (`node:test`) covering VM configuration import/export schema validation, format verification (`86web-vm-config`), media path sanitization, and name collision deduplication. Added `npm test` script to `package.json`.
