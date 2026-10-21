@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { Maximize2, RefreshCw, PowerOff, Play, Pause, AlertCircle, Monitor, Settings, FolderOpen, Volume2, VolumeX, Keyboard, CloudOff, Camera, ZoomIn, ZoomOut, Mouse, Eye, EyeOff, Disc, Save, ChevronDown, X } from 'lucide-react'
+import { Maximize2, RefreshCw, PowerOff, Play, Pause, AlertCircle, Monitor, Settings, FolderOpen, Volume2, VolumeX, Keyboard, CloudOff, Camera, ZoomIn, ZoomOut, Mouse, Lock, Eye, EyeOff, Disc, Save, ChevronDown, X } from 'lucide-react'
 import { vmApi, systemApi } from '../lib/api'
 import { useStore } from '../store/useStore'
 import { VMConfig } from '../types'
@@ -20,6 +20,9 @@ export default function VNCViewer({ vmId, vmName }: Props) {
   const rfbRef = useRef<any>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const sourceBufferRef = useRef<SourceBuffer | null>(null)
+  const mouseWsRef = useRef<WebSocket | null>(null)
+  const mouseButtonMaskRef = useRef(0)
+  const [isPointerLocked, setIsPointerLocked] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [muted, setMuted] = useState(true)  // start muted so autoplay is allowed
@@ -181,9 +184,21 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           try {
             rfb.focus()
           } catch {}
+
+          try {
+            const mouseUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/vnc/${vmId}/mouse`
+            const mws = new WebSocket(mouseUrl)
+            mouseWsRef.current = mws
+          } catch (err) {
+            console.warn('Mouse WebSocket failed to connect:', err)
+          }
         })
 
         rfb.addEventListener('disconnect', (e: any) => {
+          if (mouseWsRef.current) {
+            mouseWsRef.current.close()
+            mouseWsRef.current = null
+          }
           if (e.detail?.clean === false) {
             setError('Connection lost')
           }
@@ -206,6 +221,10 @@ export default function VNCViewer({ vmId, vmName }: Props) {
 
     return () => {
       cancelled = true
+      if (mouseWsRef.current) {
+        mouseWsRef.current.close()
+        mouseWsRef.current = null
+      }
       if (rfbRef.current) {
         rfbRef.current.disconnect()
         rfbRef.current = null
@@ -440,6 +459,186 @@ export default function VNCViewer({ vmId, vmName }: Props) {
     canvasRef.current?.requestFullscreen()
   }
 
+  const focusCanvas = useCallback(() => {
+    try {
+      const canvas = canvasRef.current?.querySelector('canvas') || canvasRef.current
+      if (canvas && typeof (canvas as any).focus === 'function') {
+        ;(canvas as any).focus()
+      }
+    } catch {}
+  }, [])
+
+  const requestPointerLock = useCallback(() => {
+    if (!isAlive || !isRunning) return
+    const canvas = canvasRef.current?.querySelector('canvas') || canvasRef.current
+    if (!canvas) return
+
+    try {
+      if (document.pointerLockElement !== canvas) {
+        const promise = canvas.requestPointerLock()
+        if (promise && typeof (promise as any).catch === 'function') {
+          ;(promise as any).catch((err: any) => {
+            console.warn('Pointer lock failed:', err)
+          })
+        }
+      }
+    } catch (e: any) {
+      console.warn('Pointer lock request error:', e)
+    }
+  }, [isAlive, isRunning])
+
+  const releasePointerLock = useCallback(() => {
+    if (document.pointerLockElement) {
+      try {
+        document.exitPointerLock()
+      } catch {}
+    }
+    setIsPointerLocked(false)
+    mouseButtonMaskRef.current = 0
+    if (mouseWsRef.current && mouseWsRef.current.readyState === WebSocket.OPEN) {
+      mouseWsRef.current.send('b 0')
+    }
+    focusCanvas()
+  }, [focusCanvas])
+
+  useEffect(() => {
+    const handleLockChange = () => {
+      const canvas = canvasRef.current?.querySelector('canvas') || canvasRef.current
+      const locked = document.pointerLockElement === canvas
+      setIsPointerLocked(locked)
+      if (locked) {
+        mouseButtonMaskRef.current = 0
+        focusCanvas()
+        if (mouseWsRef.current && mouseWsRef.current.readyState === WebSocket.OPEN) {
+          mouseWsRef.current.send('c 1')
+        }
+      } else {
+        mouseButtonMaskRef.current = 0
+        focusCanvas()
+        if (mouseWsRef.current && mouseWsRef.current.readyState === WebSocket.OPEN) {
+          mouseWsRef.current.send('b 0')
+        }
+      }
+    }
+
+    const handleLockError = () => {
+      setIsPointerLocked(false)
+    }
+
+    document.addEventListener('pointerlockchange', handleLockChange)
+    document.addEventListener('mozpointerlockchange', handleLockChange)
+    document.addEventListener('pointerlockerror', handleLockError)
+    document.addEventListener('mozpointerlockerror', handleLockError)
+
+    return () => {
+      document.removeEventListener('pointerlockchange', handleLockChange)
+      document.removeEventListener('mozpointerlockchange', handleLockChange)
+      document.removeEventListener('pointerlockerror', handleLockError)
+      document.removeEventListener('mozpointerlockerror', handleLockError)
+    }
+  }, [focusCanvas])
+
+  useEffect(() => {
+    if (!isRunning && isPointerLocked) {
+      releasePointerLock()
+    }
+  }, [isRunning, isPointerLocked, releasePointerLock])
+
+  useEffect(() => {
+    const container = canvasRef.current
+    if (!container) return
+
+    const handleCanvasClick = () => {
+      focusCanvas()
+      if (!isPointerLocked && isRunning) {
+        requestPointerLock()
+      }
+    }
+
+    const mapButton = (button: number): number => {
+      if (button === 0) return 1 // Left
+      if (button === 2) return 2 // Right
+      if (button === 1) return 4 // Middle
+      return 0
+    }
+
+    const handleMouseDown = (e: MouseEvent) => {
+      focusCanvas()
+      if (!isPointerLocked) return
+
+      // Middle-click releases pointer lock
+      if (e.button === 1) {
+        e.preventDefault()
+        e.stopPropagation()
+        releasePointerLock()
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      const bmask = mapButton(e.button)
+      mouseButtonMaskRef.current |= bmask
+
+      if (mouseWsRef.current && mouseWsRef.current.readyState === WebSocket.OPEN) {
+        mouseWsRef.current.send(`b ${mouseButtonMaskRef.current}`)
+      }
+    }
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (!isPointerLocked) return
+
+      if (e.button === 1) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      const bmask = mapButton(e.button)
+      mouseButtonMaskRef.current &= ~bmask
+
+      if (mouseWsRef.current && mouseWsRef.current.readyState === WebSocket.OPEN) {
+        mouseWsRef.current.send(`b ${mouseButtonMaskRef.current}`)
+      }
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isPointerLocked) return
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      const dx = e.movementX ?? (e as any).mozMovementX ?? 0
+      const dy = e.movementY ?? (e as any).mozMovementY ?? 0
+      if (dx === 0 && dy === 0) return
+
+      if (mouseWsRef.current && mouseWsRef.current.readyState === WebSocket.OPEN) {
+        mouseWsRef.current.send(`m ${dx} ${dy}`)
+      }
+    }
+
+    const handleContextMenu = (e: MouseEvent) => {
+      if (isPointerLocked) {
+        e.preventDefault()
+      }
+    }
+
+    container.addEventListener('click', handleCanvasClick)
+    container.addEventListener('mousedown', handleMouseDown, { capture: true })
+    container.addEventListener('mouseup', handleMouseUp, { capture: true })
+    container.addEventListener('mousemove', handleMouseMove, { capture: true })
+    container.addEventListener('contextmenu', handleContextMenu, { capture: true })
+
+    return () => {
+      container.removeEventListener('click', handleCanvasClick)
+      container.removeEventListener('mousedown', handleMouseDown, { capture: true } as any)
+      container.removeEventListener('mouseup', handleMouseUp, { capture: true } as any)
+      container.removeEventListener('mousemove', handleMouseMove, { capture: true } as any)
+      container.removeEventListener('contextmenu', handleContextMenu, { capture: true } as any)
+    }
+  }, [isPointerLocked, isRunning, requestPointerLock, releasePointerLock, focusCanvas])
+
   function toggleMute() {
     const audio = audioRef.current
     if (!audio) return
@@ -586,6 +785,29 @@ export default function VNCViewer({ vmId, vmName }: Props) {
               className={`btn-ghost text-xs ${uiVisible ? 'text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
             >
               {uiVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          )}
+
+          {/* Mouse pointer lock toggle — only when running */}
+          {isRunning && serverOnline && (
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                focusCanvas()
+                if (isPointerLocked) {
+                  releasePointerLock()
+                } else {
+                  requestPointerLock()
+                }
+              }}
+              title={isPointerLocked ? 'Release Mouse from VM (Middle-Click or Esc)' : 'Lock Mouse Pointer to VM (FPS Mode)'}
+              className={`btn-ghost text-xs ${
+                isPointerLocked
+                  ? 'text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Mouse className="w-3.5 h-3.5" />
             </button>
           )}
 
@@ -831,24 +1053,50 @@ export default function VNCViewer({ vmId, vmName }: Props) {
           </div>
         )}
 
-        {/* Mouse release hint — top-right strip, visible while running */}
+        {/* Pointer lock active notification banner */}
+        {isPointerLocked && isRunning && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-slate-900/90 text-slate-200 border border-slate-700/80 px-3.5 py-1.5 rounded-full shadow-xl text-xs backdrop-blur-sm pointer-events-none select-none transition-all">
+            <Mouse className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+            <span>
+              Mouse locked &bull; <kbd className="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-[10px] text-blue-300 font-mono">Middle-Click</kbd> or <kbd className="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-[10px] text-blue-300 font-mono">Esc</kbd> to release
+            </span>
+          </div>
+        )}
+
+        {/* Mouse release / lock hint — top-right strip, visible while running */}
         {isRunning && (
           <button
-            className="absolute top-0 right-0 z-10 flex flex-col items-center gap-2.5 bg-black/40 hover:bg-black/60 backdrop-blur-sm px-2 py-3 rounded-bl-lg select-none cursor-pointer transition-colors"
-            title="Click here to release mouse from VM"
-            onClick={() => vmApi.sendKey(vmId, KEY_RELEASE_MOUSE).catch(() => {})}
+            onMouseDown={(e) => e.preventDefault()}
+            className={`absolute top-0 right-0 z-10 flex flex-col items-center gap-2.5 px-2 py-3 rounded-bl-lg select-none cursor-pointer transition-colors ${
+              isPointerLocked
+                ? 'bg-blue-600/70 hover:bg-blue-600/90 text-white backdrop-blur-sm shadow-md'
+                : 'bg-black/40 hover:bg-black/60 text-white/60 backdrop-blur-sm'
+            }`}
+            title={isPointerLocked ? 'Mouse is locked (Click or Middle-Click to release)' : 'Click to lock mouse (FPS Mode)'}
+            onClick={() => {
+              focusCanvas()
+              if (isPointerLocked) {
+                releasePointerLock()
+              } else {
+                requestPointerLock()
+              }
+            }}
           >
-            <div className="relative w-4 h-4 text-white/60 flex-shrink-0">
+            <div className="relative w-4 h-4 flex-shrink-0">
               <Mouse className="w-4 h-4" />
-              <svg className="absolute inset-0 w-4 h-4" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <line x1="2" y1="12" x2="12" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
+              {isPointerLocked ? (
+                <Lock className="absolute -bottom-1 -right-1 w-2.5 h-2.5 text-blue-200" />
+              ) : (
+                <svg className="absolute inset-0 w-4 h-4" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <line x1="2" y1="12" x2="12" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              )}
             </div>
             <span
-              className="text-white/60 text-[11px] whitespace-nowrap"
+              className="text-[11px] whitespace-nowrap"
               style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
             >
-              Click here to release mouse from VM
+              {isPointerLocked ? 'Mouse Locked (Click or Middle-Click to release)' : 'Click to lock mouse'}
             </span>
           </button>
         )}

@@ -243,6 +243,59 @@ async def vnc_proxy(websocket: WebSocket, vm_id: int):
         log.warning("VNC proxy error for VM %d: %s", vm_id, e)
 
 
+@app.websocket("/vnc/{vm_id}/mouse")
+async def mouse_proxy(websocket: WebSocket, vm_id: int):
+    """Direct low-latency WebSocket endpoint for relative mouse input (Pointer Lock)."""
+    status = manager.get_status(vm_id)
+    if status.get("status") not in ("running", "paused"):
+        await websocket.close(code=4004, reason="VM not running")
+        return
+
+    sock_path = manager.get_ipc_socket_path(vm_id)
+    if not sock_path:
+        await websocket.close(code=1011, reason="IPC socket not available")
+        return
+
+    req_protocols = websocket.headers.get("sec-websocket-protocol", "")
+    subprotocols = [p.strip() for p in req_protocols.split(",") if p.strip()]
+    accepted = subprotocols[0] if subprotocols else None
+    await websocket.accept(subprotocol=accepted)
+
+    try:
+        reader, writer = await asyncio.open_unix_connection(sock_path)
+    except Exception as e:
+        log.warning("Cannot connect to IPC socket %s for VM %d: %s", sock_path, vm_id, e)
+        await websocket.close(code=1011, reason="Cannot connect to VM IPC")
+        return
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if not data:
+                continue
+            parts = data.strip().split()
+            if not parts:
+                continue
+            cmd_type = parts[0]
+            if cmd_type == "m" and len(parts) >= 3:
+                writer.write(f"mouse_move {parts[1]} {parts[2]}\n".encode("utf-8"))
+            elif cmd_type == "b" and len(parts) >= 2:
+                writer.write(f"mouse_btn {parts[1]}\n".encode("utf-8"))
+            elif cmd_type == "c" and len(parts) >= 2:
+                writer.write(f"mouse_capture {parts[1]}\n".encode("utf-8"))
+            await writer.drain()
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        log.debug("Mouse socket disconnect for VM %d: %s", vm_id, e)
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+
 # ─── Audio streaming ──────────────────────────────────────────────────────────
 
 @app.get("/vms/{vm_id}/audio")

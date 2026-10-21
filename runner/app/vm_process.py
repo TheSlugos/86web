@@ -725,12 +725,12 @@ class VMProcessManager:
             }
             for p in self._vms.values()
         ]
-    def run_ipc_command(self, vm_id: int, cmd: str, procs: Optional[VMProcesses] = None) -> dict:
-        """Send an IPC command to the 86Box UNIX socket."""
+    def get_ipc_socket_path(self, vm_id: int, procs: Optional[VMProcesses] = None) -> Optional[str]:
+        """Resolve the path to the 86Box IPC socket for a VM."""
         if procs is None:
             procs = self._vms.get(vm_id)
         if not procs or procs.status == "stopped":
-            return {"error": "VM not running"}
+            return None
 
         vm_dir = getattr(procs, "vm_dir", None)
         sock_path = os.path.join(vm_dir, "86box-ipc.sock") if vm_dir else None
@@ -739,6 +739,18 @@ class VMProcessManager:
         if not os.path.exists(sock_path):
             sock_path = "/tmp/86box-ipc.sock"
         if not os.path.exists(sock_path):
+            return None
+        return sock_path
+
+    def run_ipc_command(self, vm_id: int, cmd: str, procs: Optional[VMProcesses] = None) -> dict:
+        """Send an IPC command to the 86Box UNIX socket."""
+        if procs is None:
+            procs = self._vms.get(vm_id)
+        if not procs or procs.status == "stopped":
+            return {"error": "VM not running"}
+
+        sock_path = self.get_ipc_socket_path(vm_id, procs=procs)
+        if not sock_path:
             return {"error": "IPC socket not found. Ensure you are using the patched 86Box version."}
 
         import socket
