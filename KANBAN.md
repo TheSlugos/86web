@@ -26,9 +26,11 @@
   - Document best practices for public deployment (e.g. Cloudflare Zero Trust / Access, VNC passwords, SSL termination).
 
 ### UI & Input Controls
-- [ ] **Fix 86Box Menu & Status Bar Toggle Button**
-  - The button that hides/shows the 86Box menu and status bars in `VNCViewer.tsx` is not toggling the UI as expected.
-  - Investigate `xdotool` key mapping (`Page_Down` vs `Next`), `--clearmodifiers` flag interaction with Ctrl+Alt, or add a dedicated `toggle_ui` command to the native 86Box IPC protocol.
+- [x] **Fix 86Box Menu & Status Bar Toggle Button (`29e8680`)**
+  - Added native `ui_toggle`, `ui_set`, and `ui_status` IPC commands to 86Box core.
+  - Added `hide_menu_bar` configuration option so VMs boot with a clean guest display in windowed mode.
+  - Added fast-path intercept in runner `send_key` to route `KEY_TOGGLE_UI` directly over IPC instead of `xdotool`.
+  - Updated `VNCViewer.tsx` to sync UI button state directly with 86Box emulator response.
 - [ ] **Client-Side Gamepad & Joystick Support (HTML5 Gamepad API)**
   - Capture Gamepad API inputs (`navigator.getGamepads()`) in the browser and stream axis/button states over a dedicated WebSocket to the runner.
   - Bridge inputs into a virtual Linux joystick via `/dev/uinput` in `86web-runner` so 86Box's SDL2 layer maps it to the emulated Gameport for games like *X-Wing* and *TIE Fighter*.
@@ -50,8 +52,7 @@
 
 1. **VM Group Networking Lab (Packet Drivers & Multi-VM DOOM / IPX)**
 2. **Client-Side Joystick Streaming Support (HTML5 Gamepad -> `/dev/uinput`)**
-3. **Fix 86Box Menu & Status Bar Toggle Button (`xdotool` vs IPC `toggle_ui`)**
-4. **Security Hardening (JWT Secret, Stream Auth, Rate Limiting)**
+3. **Security Hardening (JWT Secret, Stream Auth, Rate Limiting)**
 
 ---
 
