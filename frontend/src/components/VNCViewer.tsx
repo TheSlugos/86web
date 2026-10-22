@@ -422,8 +422,21 @@ export default function VNCViewer({ vmId, vmName }: Props) {
   }
 
   async function handleToggleUI() {
-    await vmApi.sendKey(vmId, KEY_TOGGLE_UI).catch(() => {})
-    setUiVisible(v => !v)
+    try {
+      const res = await vmApi.sendKey(vmId, KEY_TOGGLE_UI)
+      if (res && typeof res === 'object' && 'output' in res && typeof (res as any).output === 'string') {
+        const out = (res as any).output
+        if (out.includes('ui_toggle')) {
+          const parts = out.trim().split(/\s+/)
+          const visible = parts[parts.length - 1] === '1'
+          setUiVisible(visible)
+          return
+        }
+      }
+      setUiVisible(v => !v)
+    } catch {
+      setUiVisible(v => !v)
+    }
   }
 
   async function handleScreenshot() {

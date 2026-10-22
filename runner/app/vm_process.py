@@ -398,7 +398,7 @@ class VMProcessManager:
                 os.symlink(box86_cache_dir, cache_link)
 
             cfg_path = os.path.join(vm_dir, "86box.cfg")
-            _inject_cfg_options(cfg_path, {"General": {"hide_tool_bar": "1", "start_in_fullscreen": "0"}})
+            _inject_cfg_options(cfg_path, {"General": {"hide_tool_bar": "1", "hide_status_bar": "1", "hide_menu_bar": "1", "start_in_fullscreen": "0"}})
             box86_args = [
                 settings.box86_exec,  # extracted binary if available, else AppImage
                 "--config", cfg_path,
@@ -665,6 +665,13 @@ class VMProcessManager:
             if ipc_res.get("status") == "ok":
                 log.info("VM %d Ctrl+Alt+Del sent via native IPC cad", vm_id)
                 return {"status": "ok"}
+
+        # Fast path: send native UI toggle over IPC
+        if key in ("ctrl+alt+Next", "ctrl+alt+PgDown", "toggle_ui", "toggle_ui_fullscreen"):
+            ipc_res = self.run_ipc_command(vm_id, "ui_toggle")
+            if ipc_res.get("status") == "ok":
+                log.info("VM %d UI toggle sent via native IPC ui_toggle", vm_id)
+                return {"status": "ok", "output": ipc_res.get("output", "")}
 
         try:
             env = os.environ.copy()

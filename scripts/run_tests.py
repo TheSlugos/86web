@@ -39,11 +39,14 @@ def run_backend_tests() -> bool:
     # Use virtual environment python/pytest if present, else fallback to sys.executable
     venv_pytest_win = os.path.join(REPO_ROOT, "backend", ".venv", "Scripts", "pytest.exe")
     venv_pytest_posix = os.path.join(REPO_ROOT, "backend", ".venv", "bin", "pytest")
+    root_pytest_posix = os.path.join(REPO_ROOT, ".venv", "bin", "pytest")
 
     if os.path.isfile(venv_pytest_win):
         pytest_cmd = [venv_pytest_win]
     elif os.path.isfile(venv_pytest_posix):
         pytest_cmd = [venv_pytest_posix]
+    elif os.path.isfile(root_pytest_posix):
+        pytest_cmd = [root_pytest_posix]
     else:
         pytest_cmd = [sys.executable, "-m", "pytest"]
 

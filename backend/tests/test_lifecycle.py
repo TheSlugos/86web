@@ -129,6 +129,22 @@ def test_send_key_cad_alias(manager, running_vm):
         mock_ipc.assert_called_once_with(1, "cad")
 
 
+def test_send_key_ui_toggle_fast_path(manager, running_vm):
+    with patch.object(manager, "run_ipc_command", return_value={"status": "ok", "output": "OK ui_toggle 1"}) as mock_ipc, \
+         patch("subprocess.run") as mock_xdotool:
+        res = manager.send_key(1, "ctrl+alt+Next")
+        assert res == {"status": "ok", "output": "OK ui_toggle 1"}
+        mock_ipc.assert_called_once_with(1, "ui_toggle")
+        mock_xdotool.assert_not_called()
+
+
+def test_send_key_ui_toggle_alias(manager, running_vm):
+    with patch.object(manager, "run_ipc_command", return_value={"status": "ok", "output": "OK ui_toggle 0"}) as mock_ipc:
+        res = manager.send_key(1, "toggle_ui")
+        assert res == {"status": "ok", "output": "OK ui_toggle 0"}
+        mock_ipc.assert_called_once_with(1, "ui_toggle")
+
+
 def test_send_key_non_cad_uses_xdotool(manager, running_vm):
     mock_res = MagicMock(returncode=0)
     with patch.object(manager, "run_ipc_command") as mock_ipc, \
